@@ -1,0 +1,16 @@
+go test -run=XXX -bench=. -benchmem
+PASS
+BenchmarkFixPath	50000000	        51.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchRoute1	10000000	       208 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchRoute2	10000000	       209 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLookupFullMux01	100000000	        24.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLookupFullMux02_MethodToCode_1	2000000000	         1.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLookupFullMux02_MethodToCode_2	2000000000	         1.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLookupFullMux03_HashUrl	500000000	         6.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLookupFullMux04_LookupUrl	100000000	        13.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLookupFullMux05_GetArgs	2000000000	         0.93 ns/op	       0 B/op	       0 allocs/op
+Benchmark2017	 5000000	       355 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGithub1Param	10000000	       257 ns/op	       0 B/op	       0 allocs/op
+Benchmark2017_LookupUrl	50000000	        31.2 ns/op	       0 B/op	       0 allocs/op
+Benchmark_LookupUrl_UniqueStaticRoute	20000000	        82.4 ns/op	       0 B/op	       0 allocs/op
+ok  	_/Users/corwin/lib/go-lib/m2	31.155s

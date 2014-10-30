@@ -1,0 +1,4 @@
+package gogomux
+
+func init() {
+}
