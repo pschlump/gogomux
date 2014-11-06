@@ -34,8 +34,8 @@ var testSplitSlash3_Data = []struct {
 	{"///c/./e/f/../h/i/j", "[0,2,4,6,8,10]", "/c/e/h/i/j", "[0,2]"},
 }
 
-func TestSplitOnSlash3(t *testing.T) {
-	htx := New()
+func TestSplitOnSlash3a(t *testing.T) {
+	htx := NewRouter()
 	// fmt.Printf("This ONe\n")
 	for i, test := range testSplitSlash3_Data {
 		htx.SplitOnSlash3(1, test.Url, false)
@@ -62,7 +62,7 @@ func TestSplitOnSlash3(t *testing.T) {
 // 127 ns - new version
 // 29.2 ns - early exit - no /repos in hash table.
 func OldBenchmarkOfSplitOnSlash3_long(b *testing.B) {
-	htx := New()
+	htx := NewRouter()
 
 	url := "/repos/julienschmidt/httprouter/stargazers"
 	for n := 0; n < b.N; n++ {
@@ -74,7 +74,7 @@ func OldBenchmarkOfSplitOnSlash3_long(b *testing.B) {
 // 21.2 ns - new version
 // 28.4 ns - early exit vesion for (index.html)
 func OldBenchmarkOfSplitOnSlash3_short(b *testing.B) {
-	htx := New()
+	htx := NewRouter()
 
 	url := "/repos"
 	url = "/index.html"

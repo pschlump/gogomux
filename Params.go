@@ -10,14 +10,14 @@ package gogomux
 // /Users/corwin/Projects/go-lib/gogomux
 //
 
-// xyzzy202 - need a test - need to do someting with {} patterns - need to deal with {name} patterns
-
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -49,8 +49,23 @@ type Param struct {
 // The slice is ordered, the first URL parameter is also the first slice value.
 // It is therefore safe to read values by the index.
 type Params struct {
-	NParam int
-	Data   []Param
+	NParam       int
+	Data         []Param
+	route_i      int // What matched
+	parent       *MuxRouter
+	search       map[string]int
+	search_ready bool
+}
+
+func (ps Params) CreateSearch() {
+	if ps.search_ready {
+		return
+	}
+
+	for i, v := range ps.Data {
+		ps.search[v.Name] = i
+	}
+	ps.search_ready = true
 }
 
 func (ps Params) DumpParam() (rv string) {
@@ -63,23 +78,33 @@ func (ps Params) DumpParam() (rv string) {
 // ByName returns the value of the first Param which key matches the given name.
 // If no matching Param is found, an empty string is returned.
 func (ps Params) ByName(name string) (rv string) {
+	rv = ""
 	// xyzzy100 Change this to use a map[string]int - build maps on setup.
 	// fmt.Printf("Looking For: %s, ps = %s\n", name, debug.SVarI(ps.Data[0:ps.NParam]))
+	if ps.search_ready {
+		if i, ok := ps.search[name]; ok {
+			rv = ps.Data[i].Value
+		}
+		return
+	}
 
-	rv = ""
 	for i := 0; i < ps.NParam; i++ {
 		if ps.Data[i].Name == name {
 			rv = ps.Data[i].Value
-			goto done
+			return
 		}
 	}
-done:
-	//	db("dbByName","ByName (%s) = %s\n", name, rv)
 	return
 }
 
 func (ps Params) HasName(name string) (rv bool) {
 	rv = false
+	if ps.search_ready {
+		if _, ok := ps.search[name]; ok {
+			rv = true
+		}
+		return
+	}
 	for i := 0; i < ps.NParam; i++ {
 		if ps.Data[i].Name == name {
 			rv = true
@@ -110,6 +135,7 @@ func (ps Params) ByPostion(pos int) (name string, val string, outRange bool) {
 
 // -------------------------------------------------------------------------------------------------
 func AddValueToParams(Name string, Value string, Type uint8, From FromType, ps *Params) (k int) {
+	ps.search_ready = false
 	j := ps.PositionOf(Name)
 	k = ps.NParam
 	// db("AddValueToParams","j=%d k=%d %s\n", j, k, debug.LF())
@@ -131,7 +157,7 @@ func AddValueToParams(Name string, Value string, Type uint8, From FromType, ps *
 }
 
 // -------------------------------------------------------------------------------------------------
-func ParseBodyAsParams(w *ApacheLogRecord, req *http.Request, ps *Params, _ *GoGoData, _ int) int {
+func ParseBodyAsParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
 
 	ct := req.Header.Get("Content-Type")
 	if req.Method == "POST" || req.Method == "PUT" || req.Method == "PATCH" || req.Method == "DELETE" {
@@ -139,7 +165,7 @@ func ParseBodyAsParams(w *ApacheLogRecord, req *http.Request, ps *Params, _ *GoG
 			if strings.HasPrefix(ct, "application/json") {
 				body, err2 := ioutil.ReadAll(req.Body)
 				if err2 != nil {
-					fmt.Printf("Error(90000): Malformed JSON body, RequestURI=%s err=%v\n", req.RequestURI, err2)
+					fmt.Printf("Error(20008): Malformed JSON body, RequestURI=%s err=%v\n", req.RequestURI, err2)
 				}
 				var jsonData map[string]interface{}
 				err := json.Unmarshal(body, &jsonData)
@@ -168,7 +194,7 @@ func ParseBodyAsParams(w *ApacheLogRecord, req *http.Request, ps *Params, _ *GoG
 			} else {
 				err := req.ParseForm()
 				if err != nil {
-					fmt.Printf("Error(90001): Malformed body, RequestURI=%s err=%v\n", req.RequestURI, err)
+					fmt.Printf("Error(20010): Malformed body, RequestURI=%s err=%v\n", req.RequestURI, err)
 				} else {
 					for Name, v := range req.PostForm {
 						if len(v) > 0 {
@@ -189,7 +215,7 @@ func ParseBodyAsParams(w *ApacheLogRecord, req *http.Request, ps *Params, _ *GoG
 }
 
 // -------------------------------------------------------------------------------------------------
-func ParseCookiesAsParams(w *ApacheLogRecord, req *http.Request, ps *Params, _ *GoGoData, _ int) int {
+func ParseCookiesAsParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
 
 	Ck := req.Cookies()
 	for _, v := range Ck {
@@ -199,14 +225,60 @@ func ParseCookiesAsParams(w *ApacheLogRecord, req *http.Request, ps *Params, _ *
 }
 
 // -------------------------------------------------------------------------------------------------
+var fo *os.File
+
 const ApacheFormatPattern = "%s %v %s %s %s %v %d %v\n"
 
-func ApacheLogingBefore(w *ApacheLogRecord, req *http.Request, ps *Params, data *GoGoData, status int) int {
+var benchmar = false
+
+var shortMonthNames = []string{
+	"---",
+	"Jan",
+	"Feb",
+	"Mar",
+	"Apr",
+	"May",
+	"Jun",
+	"Jul",
+	"Aug",
+	"Sep",
+	"Oct",
+	"Nov",
+	"Dec",
+}
+
+func itoaPos(n int, buffer *bytes.Buffer, padLen int, pad uint8) {
+	i := 0
+	var s [10]uint8
+	for {
+		s[i] = uint8((n % 10) + '0')
+		i++
+		n /= 10
+		if n == 0 {
+			break
+		}
+	}
+	for ; i < padLen; i++ {
+		s[i] = pad
+	}
+
+	for j := i - 1; j >= 0; j-- {
+		buffer.WriteByte(s[j])
+	}
+}
+
+func ApacheLogingBefore(w *MyResponseWriter, req *http.Request, ps *Params) int {
+	if fo == nil {
+		return 0
+	}
 	w.startTime = time.Now()
 	return 0
 }
 
-func ApacheLogingAfter(w *ApacheLogRecord, req *http.Request, ps *Params, data *GoGoData, status int) int {
+func ApacheLogingAfter(w *MyResponseWriter, req *http.Request, ps *Params) int {
+	if fo == nil {
+		return 0
+	}
 	ip := req.RemoteAddr
 	if colon := strings.LastIndex(ip, ":"); colon != -1 {
 		ip = ip[:colon]
@@ -215,44 +287,34 @@ func ApacheLogingAfter(w *ApacheLogRecord, req *http.Request, ps *Params, data *
 	finishTime := time.Now()
 	finishTimeUTC := finishTime.UTC()
 	elapsedTime := finishTime.Sub(w.startTime)
-	timeFormatted := finishTimeUTC.Format("02/Jan/2006 03:04:05")
-	fmt.Printf(ApacheFormatPattern, ip, timeFormatted, req.Method, req.RequestURI, req.Proto, w.status,
-		w.responseBytes, elapsedTime.Seconds())
+	// The next line is a real problem.  Taking 450us to convert a data is just ICKY!  I have a new
+	// version of Format that reduces this to about 300us.  What is needed is a real fast formatting
+	// tool for dates that reduces this to a reasonable 30us.
+	// Sadly enough - by not exposing the interals of the time.Time type - fixing this will require
+	// a major re-write of the entire time type.   That is oging to take some days to do.
+	var timeFormatted string
+	if false {
+		timeFormatted = finishTimeUTC.Format("02/Jan/2006 03:04:05") // 450+ us to do a time format and 1 alloc
+	} else {
+		y, m, d := finishTimeUTC.Date() // These funcs (Year,Month,Day,Clock) take 245 us just to extract info
+		H, M, S := finishTimeUTC.Clock()
+		if false {
+			// This silly thing takes 1245 us to convert/format a string.
+			timeFormatted = fmt.Sprintf("%02d/%3s/%04d %02d:%02d:%02d", d, shortMonthNames[m], y, H, M, S)
+		} else {
+			timeFormatted = ""
+		}
+	}
+
+	if !benchmar {
+		fmt.Fprintf(fo, ApacheFormatPattern, ip, timeFormatted, req.Method, req.RequestURI, req.Proto, w.status,
+			w.responseBytes, elapsedTime.Seconds())
+	}
 	return 0
 }
 
 // -------------------------------------------------------------------------------------------------
-const SimpleLogingData = 0
-
-type SimpleLoging struct {
-	tag int
-}
-
-func SimpleLogingBefore(w *ApacheLogRecord, req *http.Request, ps *Params, data *GoGoData, status int) int {
-	if data.UserData == nil {
-		// fmt.Printf("Created, %s\n", debug.LF())
-		data.UserData = make([]interface{}, 10, 10)
-	}
-	if data.UserData[SimpleLogingData] == nil {
-		// fmt.Printf("Added at %d, %s\n", SimpleLogingData, debug.LF())
-		data.UserData[SimpleLogingData] = &SimpleLoging{tag: 12}
-	}
-	// fmt.Printf("Before at %d, %s\n", SimpleLogingData, debug.LF())
-	t := ((data.UserData[SimpleLogingData]).(*SimpleLoging))
-	// fmt.Printf("After at %d, %s\n", SimpleLogingData, debug.LF())
-	t.tag = 22
-	data.UserData[SimpleLogingData] = t
-	return 0
-}
-func SimpleLogingAfter(w *ApacheLogRecord, req *http.Request, ps *Params, data *GoGoData, status int) int {
-	t := ((data.UserData[SimpleLogingData]).(*SimpleLoging))
-	_ = t
-	// fmt.Printf("data[] = %d\n", t.tag)
-	return 0
-}
-
-// -------------------------------------------------------------------------------------------------
-func ParseQueryParams(w *ApacheLogRecord, req *http.Request, ps *Params, _ *GoGoData, _ int) int {
+func ParseQueryParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
 	// u, err := url.ParseRequestURI(req.RequestURI)
 	if req.URL.RawQuery == "" {
 		return 0
@@ -275,7 +337,7 @@ func ParseQueryParams(w *ApacheLogRecord, req *http.Request, ps *Params, _ *GoGo
 }
 
 // -------------------------------------------------------------------------------------------------
-func PrefixWith(w *ApacheLogRecord, req *http.Request, ps *Params, _ *GoGoData, _ int) int {
+func PrefixWith(w *MyResponseWriter, req *http.Request, ps *Params) int {
 	// Prefix for AngularJS
 	w.Write([]byte(")]}"))
 	// Other Common Prefixes are:
@@ -287,7 +349,7 @@ func PrefixWith(w *ApacheLogRecord, req *http.Request, ps *Params, _ *GoGoData, 
 }
 
 // -------------------------------------------------------------------------------------------------
-func MethodParam(w *ApacheLogRecord, req *http.Request, ps *Params, _ *GoGoData, _ int) int {
+func MethodParam(w *MyResponseWriter, req *http.Request, ps *Params) int {
 	//fmt.Printf("MethodParam\n")
 	//fmt.Printf("%s\n", debug.LF())
 	if ps.HasName("METHOD") {

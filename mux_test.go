@@ -1,139 +1,209 @@
+// Copyright 2012 The GoGoMux Authors.  All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Some of the code in this is derived from Gorilla Mux and HttpRouter.
+
 package gogomux
 
-//
-// Go Go Mux - Go Fast Mux / Router for HTTP requests
-//
-// (C) Philip Schlump, 2013-2014.
-// Version: 0.4.3
-// BuildNo: 803
-//
-// /Users/corwin/Projects/go-lib/gogomux
-//
-
 import (
-	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
-	"regexp"
-	"strconv"
+	"os"
 	"testing"
 
+	// "./context" // "github.com/gorilla/context"
 	"./debug"
 )
 
-var DataTab []RouteData
+type routeTestNew struct {
+	title          string            // title of the test
+	request        *http.Request     // a request to test the route
+	vars           map[string]string // the expected vars of the match
+	host           string            // the expected host of the match
+	path           string            // the expected path of the match
+	route          string            // the route pattern we are creating
+	shouldMatch    bool              // whether the request is expected to match the route at all
+	shouldRedirect bool              // whether the request should result in a redirect
+	DId            int               // Used for testing
+	DName          string            // Used to identify a route by name
+	DPath          string            // Set by Handler("/path",Fx), Path(), PathPrefix()
+	DPathPrefix    string            //
+	DHandlerFunc   http.Handler      //
+	DHeaders       []string          // Set by Headers()
+	DHost          string            // Set by Host()
+	DMethods       []string          // Set by Methods()
+	DSchemes       []string          // Set by Schemes()
+	DQueries       []string          // Set by Queries()
+	DProtocal      []string          //
+	//route          *ARoute           // the route being tested
+}
 
-// This is used in the read-in stuff below
-func getFxHandler(nfx int) Handle {
-	return func(res http.ResponseWriter, req *http.Request, ps Params) {
+var data_DataCollectBeforeCompile = []routeTestNew{
+	{
+		title:    "Setting up routes",
+		route:    "/abc/def",
+		DMethods: []string{"GET", "PUT"},
+	},
+	{
+		title: "Setting up routes",
+		route: "/abc/ghi",
+		DHost: "pschlump.2c-why.com",
+	},
+}
+
+var called = 0
+var g_params string
+var g_route_i int
+
+func rptCalled(w http.ResponseWriter, req *http.Request, ps Params) {
+	called = 1
+	g_route_i = 0
+	// fmt.Printf("%s\n", ps.DumpParam())
+	g_params = ps.DumpParam()
+	g_route_i = ps.route_i
+}
+
+func (r *MuxRouter) dumpTest() {
+	for i := 0; i < len(r.routes); i++ {
+		fmt.Printf("%3d: %s %s %s %s\n", i,
+			debug.SVar(r.routes[i].DMethods),
+			debug.SVar(r.routes[i].DSchemes),
+			r.routes[i].DHost,
+			r.routes[i].DPath)
 	}
 }
 
-func (r *MuxRouter) ReadData(path string) (rv []RouteData) {
-	var jsonData []RouteData
-	file, err := ioutil.ReadFile(path)
-	if err != nil {
-		fmt.Printf("Error(10014): %v, %s, Config File:%s\n", err, debug.LF(), path)
-		return jsonData
+func Test_SimpleRoute01(t *testing.T) {
+	if false {
+		fmt.Printf("At Top, %s\n", debug.LF())
 	}
-	err = json.Unmarshal(file, &jsonData)
-	if err != nil {
-		fmt.Printf("Error(10012): %v, %s, Config File:%s\n", err, debug.LF(), path)
-	}
-	for i, v := range jsonData {
-		jsonData[i].UseIt = !v.NotUseIt
-		if v.NFxNo == 0 {
-			v.NFxNo = FxTabN
-			FxTabN++
-			FxTab.Fx[v.NFxNo] = getFxHandler(v.NFxNo) // xyzzy102 - should be r.XXX and call user func
+	r := NewRouter()
+	for ii, test := range data_DataCollectBeforeCompile {
+		_, _ = ii, test
+		// testRoute(t, test)
+		x := r.HandleFunc(test.route, rptCalled)
+		if test.DHost != "" {
+			x.Host(test.DHost)
+		}
+		if len(test.DMethods) > 0 {
+			x.Methods(test.DMethods...)
+		} else {
+			x.Methods("GET")
 		}
 	}
-	rv = jsonData
-	return
+	r.setDefaults()
+	r.buildRoutingTable()
+	if false {
+		r.dumpTest()
+	}
+	if r.routes[0].DPath != "/abc/def" {
+		t.Errorf("Expected /abc/def\n")
+	}
+	if len(r.routes[0].DMethods) != 2 {
+		t.Errorf("Expected 2, got %d == %s\n", len(r.routes[0].DMethods), debug.SVar(r.routes[0].DMethods))
+	}
+	if r.routes[1].DPath != "/abc/ghi" {
+		t.Errorf("Expected /abc/def\n")
+	}
+	if len(r.routes[1].DMethods) != 1 {
+		t.Errorf("Expected 1, got %d == %s\n", len(r.routes[1].DMethods), debug.SVar(r.routes[1].DMethods))
+	}
+
+	r.AttachWidget(Before, ParseQueryParams)
+	r.AttachWidget(Before, MethodParam)          // 15ns
+	r.AttachWidget(Before, ParseBodyAsParams)    // 27ns
+	r.AttachWidget(Before, ParseCookiesAsParams) // 28ns
+	if true {
+		r.AttachWidget(Before, ApacheLogingBefore) // 17ns
+		r.AttachWidget(After, ApacheLogingAfter)   // 1 alloc + 475ns - Caused by format of time
+	}
+
+	r.CompileRoutes()
+	if false {
+		r.OutputStatusInfo()
+	}
+
+	// Check Routing - simple check.
+	var req http.Request
+	// var w http.ResponseWriter
+	var url url.URL
+	// var tls tls.ConnectionState
+	disableOutput = true
+	w := new(mockResponseWriter)
+	req.URL = &url
+	req.URL.Path = "/abc/def"
+	req.URL.RawQuery = "id=12"
+	req.Method = "GET"
+	req.Host = "localhost:8080"
+	req.TLS = nil
+	req.RemoteAddr = "[::1]:53248"
+	if req.URL.RawQuery != "" {
+		req.RequestURI = req.URL.Path + "?" + req.URL.RawQuery
+	} else {
+		req.RequestURI = req.URL.Path
+	}
+	req.Proto = "HTTP/1.1"
+	req.Header = make(http.Header)
+
+	called = 0
+	r.ServeHTTP(w, &req)
+	if called != 1 {
+		t.Errorf("Test: Expected to have handler called. %d\n", called)
+	}
+
+	expected_params := `[{"Name":"id","Value":"12","From":1,"Type":113}]`
+	if g_params != expected_params {
+		t.Errorf("Test: Expected params ->%s<- got ->%s<-\n", expected_params, g_params)
+	}
 }
 
-var testRuns2 = []struct {
-	param  string
-	result string
-}{
-	{"", `["/"]`},
-	{"/", `["/"]`},
-	{"a", `["a"]`},
-	{"aa", `["aa"]`},
-	{"/a", `["/","a"]`},
-	{"/aa", `["/","aa"]`},
-	{"//a", `["/","a"]`},
-	{"///a", `["/","a"]`},
-	{"///a/", `["/","a"]`},
-	{"///a//", `["/","a"]`},
-	{"///a///", `["/","a"]`},
-	{"aa", `["aa"]`},
-	{"/aa", `["/","aa"]`},
-	{"//aa", `["/","aa"]`},
-	{"///aa", `["/","aa"]`},
-	{"///aa/", `["/","aa"]`},
-	{"///aa//", `["/","aa"]`},
-	{"./aa", `["aa"]`},
-	{"././aa", `["aa"]`},
-	{"./././aa", `["aa"]`},
-	{"/./aa", `["/","aa"]`},
-	{"/././aa", `["/","aa"]`},
-	{"/./././aa", `["/","aa"]`},
-	{"/aa/bb", `["/","aa","bb"]`},
-	{"/aa//bb/cc/dd", `["/","aa","bb","cc","dd"]`},
-	{"/aa/bb///cc/dd", `["/","aa","bb","cc","dd"]`},
-	{"/aa/bb/./cc//.//dd", `["/","aa","bb","cc","dd"]`},
-	{"/aa/bb.html", `["/","aa","bb.html"]`},
-	{"/aa//bb/cc/dd.php", `["/","aa","bb","cc","dd.php"]`},
-	{"/aa//bb/cc/dd.php/", `["/","aa","bb","cc","dd.php"]`},
-	{"/aa//bb/cc/dd.php//", `["/","aa","bb","cc","dd.php"]`},
-	{"/aa//bb/cc/dd.php///", `["/","aa","bb","cc","dd.php"]`},
-	{"/aa/bb///cc.php/dd", `["/","aa","bb","cc.php","dd"]`},
-	{"/aa/bb/./...cc//.//dd", `["/","aa","bb","...cc","dd"]`},
-	{"/aa/bb/./.cc//.//dd", `["/","aa","bb",".cc","dd"]`},
-	{"/../a", `["/","a"]`},
-	{"/../../a", `["/","a"]`},
-	{"/../../../a", `["/","a"]`},
-	{"/../../../../a", `["/","a"]`},
-	{"../a", `["/","a"]`},
-	{"../../a", `["/","a"]`},
-	{"../../../a", `["/","a"]`},
-	{"../../../../a", `["/","a"]`},
-	{"../../a.html", `["/","a.html"]`},
-	{"../../../a.html", `["/","a.html"]`},
-	{"../../../../a.html", `["/","a.html"]`},
-	{"../bb/cc/../../a.html", `["/","a.html"]`},
-	{"../bb/cc/dd/../../a.html", `["/","bb","a.html"]`},
-	{"./bb/cc/dd/../../a.html", `["bb","a.html"]`},
-	{"bb/cc/dd/../../ee/a.html", `["bb","ee","a.html"]`},
-	{"bb/cc/dd/../../ee/../a.html", `["bb","a.html"]`},
-	{"bb/cc/dd/../../ee/../a.html/", `["bb","a.html"]`},
-	{"bb/cc/dd/../../ee/../a.html//", `["bb","a.html"]`},
-	{"/./../bb/cc/dd/../../ee/../a.html//", `["/","bb","a.html"]`},
-	{"/./../.../cc/dd/../../ee/../a.html//", `["/","...","a.html"]`},
-	/*
-	 */
+// -----------------------------------------------------------------------------------------------------
+// Fake Writer so that lack of a writer during tests will not result in a core dump.
+// Just think the author of this software is so old that he has actually written programs
+// that were loaded into "core" memory (The little tiny magnets)!
+type mockResponseWriter struct{}
+
+func (m *mockResponseWriter) Header() (h http.Header) {
+	return http.Header{}
 }
 
-var testMatchRuns2 = []struct {
-	method string
-	param  string
-	result int
-}{
-	{"GET", "/api/table/liz/", 4},
-	{"GET", "/api/table/liz/22", 3},
-	{"GET", "/api/table/liz/", 4},
-	{"GET", "/api/table/liz/:id", 3},
-	{"GET", "/api/table/liz/1", 3},
-	{"GET", "/api/table/liz/123", 3},
-	{"GET", "/api/table/liz/4452-232323-2323232-232323", 3},
-	{"GET", "/api/table/carbone/", 7},
-	{"GET", "/index.html", 9},
-	{"GET", "/api/js/jQuery-2.0.1.min.js", 9},
+func (m *mockResponseWriter) Write(p []byte) (n int, err error) {
+	return len(p), nil
+}
+
+func (m *mockResponseWriter) WriteString(s string) (n int, err error) {
+	return len(s), nil
+}
+
+func (m *mockResponseWriter) WriteHeader(int) {}
+
+// -----------------------------------------------------------------------------------------------------
+// This little dodad outputs info on colisions and routes.  Remember that GET /abc/def is a completely
+// different route than POST /abc/def and will show up in a different lcoaiton in the hash table.
+func (r *MuxRouter) OutputStatusInfo() {
+	nc := 0
+	fmt.Printf("[%4s] %6s %s\n", "", "cType", ".cType flags")
+	fmt.Printf("%6s %6s %s\n", "------", "------", "---------------------------")
+	for i, v := range r.Hash2Test {
+		if v > 0 {
+			fmt.Printf("[%4d] 0x%04x %s\n", i, r.LookupResults[v].cType, dumpCType(r.LookupResults[v].cType))
+			if (r.LookupResults[v].cType & MultiUrl) != 0 {
+				nc++
+				for j, w := range r.LookupResults[v].Multi {
+					ns := numChar(j, '/')
+					fmt.Printf("   %2d %s\n", ns, j)
+					_ = w
+				}
+			} else {
+				fmt.Printf("   %2s %s\n", "", r.LookupResults[v].Url)
+			}
+		}
+	}
+	fmt.Printf("\nNumber of Collisions = %d\n\n", nc)
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -422,7 +492,12 @@ var test2017Data = []struct {
 	{true, "GET", "/xyz/xyz/xyz", 300},
 	{true, "GET", "/xyz01", 301},
 	{true, "delete", "/bad01", 302},
-	{true, "delete", "bad02", 303},
+	{true, "DELETE", "bad02", 303},
+	{true, "GET", "/", 3001},
+	{true, "GET", "/index.html", 3002},
+	{true, "GET", "/index.htm", 3002},
+	{true, "GET", "/default.html", 3002},
+	{true, "GET", "/default.htm", 3002},
 }
 
 type NV struct {
@@ -558,8 +633,16 @@ var test2017Run = []struct {
 	/* 109 */ {true, "GET", "/gists", 77, true, nil},
 	/* 110 */ {true, "HEAD", "/r1", 7, true, nil},
 	/* 111 */ {true, "GET", "/r2/4/4", 11, true, nil},
-	/* 111 */ {true, "GET", "/r2/a/4", 10, true, nil},
-	/* 111 */ {true, "GET", "/r2/A/4", 12, true, nil},
+	/* 112 */ {true, "GET", "/r2/a/4", 10, true, nil},
+	/* 113 */ {true, "GET", "/r2/A/4", 12, true, nil},
+	/* 114 */ {true, "GET", "/", 12, true, nil},
+	/* 115 */ {true, "GET", "/index.html", 12, true, nil},
+	/* 116 */ {true, "GET", "/index.htm", 12, true, nil},
+	/* 117 */ {true, "GET", "/?id=112&testNo=117", 12, true,
+		[]NV{
+			NV{Type: "?", Name: "id", Value: "112"},
+			NV{Type: "?", Name: "testNo", Value: "117"},
+		}},
 }
 
 var rpTest string
@@ -588,133 +671,93 @@ func rptParams2(w http.ResponseWriter, r *http.Request, ps Params) {
 	w.Write([]byte("Hello Silly World<br>"))
 }
 
-func xHandle(w http.ResponseWriter, r *http.Request, ps Params) {
-	arrived = 4001
-}
-func xHandleR2_2(w http.ResponseWriter, r *http.Request, ps Params) {
-	arrived = 4002
-}
-func xHandleR2_3(w http.ResponseWriter, r *http.Request, ps Params) {
-	arrived = 4003
-}
-func xHandleR2_4(w http.ResponseWriter, r *http.Request, ps Params) {
-	arrived = 4004
+func createFx(ii int) HandleFunc {
+	var t = ii
+	return func(w http.ResponseWriter, r *http.Request, ps Params) {
+		arrived = t
+		g_route_i = ps.route_i
+	}
 }
 
 func init() {
-	htx = New()
+	var err error
+	fo, err = os.OpenFile("log.log", os.O_RDWR|os.O_APPEND, 0660)
+	if err != nil {
+		fo, err = os.Create("log.log")
+		if err != nil {
+			panic(err)
+		}
+	}
+	htx = NewRouter()
+	fmt.Printf("Should generate 3 errors that look like:\n")
+	fmt.Printf("( this is to test the error check code )\n")
+	fmt.Printf("-------------------------------------------------------------------------\n")
+	fmt.Printf("Error(20000): Method %%s is invalid.  Called From: %%s\n")
+	fmt.Printf("Error(20002): Path should begin with '/', passed %%s, File:%%s LinLineNo:%%d\n")
+	fmt.Printf("Error(20002): Path should begin with '/', passed %%s, File:%%s LinLineNo:%%d\n")
+	fmt.Printf("-------------------------------------------------------------------------\n")
+	fmt.Printf("\n")
 	htx.AttachWidget(Before, ParseQueryParams)
-	htx.AttachWidget(Before, ParseBodyAsParams)
-	htx.AttachWidget(Before, MethodParam)
-	htx.AttachWidget(Before, ParseCookiesAsParams)
-	//htx.AttachWidget(Before, SimpleLogingBefore)
-	//htx.AttachWidget(After, SimpleLogingAfter)
-	htx.AttachWidget(Before, ApacheLogingBefore)
-	htx.AttachWidget(After, ApacheLogingAfter)
+	htx.AttachWidget(Before, MethodParam)          // 15ns
+	htx.AttachWidget(Before, ParseBodyAsParams)    // 27ns
+	htx.AttachWidget(Before, ParseCookiesAsParams) // 28ns
+	if true {
+		htx.AttachWidget(Before, ApacheLogingBefore) // 17ns
+		htx.AttachWidget(After, ApacheLogingAfter)   // 1 alloc + 475ns - Caused by format of time
+	}
 	for i, test := range test2017Data {
 		if test.LoadUrl {
-			// fmt.Printf("\n ==================== AddRoue, %d, %s\n", test.Result, test.Url)
 			if test.Url == "/xyz/xyz/xyz" {
-				// fmt.Printf("adding new route, %s\n", debug.LF())
-				// htx.AddRoute(test.Method, test.Url, test.Result, func(w http.ResponseWriter, r *http.Request, ps Params) { j := i; arrived = 2000 + j }).SetHost("localhost:8090")
-				htx.AddRoute(test.Method, test.Url, test.Result, func(w http.ResponseWriter, r *http.Request, ps Params) { j := i; arrived = 2000 + j }).SetPort("8090")
-				// htx.AddRoute(test.Method, test.Url, test.Result, emptyTestingHandle)
+				// htx.AddRoute(test.Method, test.Url, test.Result, func(w http.ResponseWriter, r *http.Request, ps Params) { j := i; arrived = 2000 + j }).SetPort("8090")
+				htx.HandleFunc(test.Url, createFx(i)).Methods(test.Method).Port("8090")
 			} else if test.Url == "/xyz01" {
-				// fmt.Printf("adding new route, %s\n", debug.LF())
-				// /*  00 */ {true, "GET", "https", "localhost:2000", "/xyz01", 1, true},
-				htx.AddRoute(test.Method, test.Url, test.Result, func(w http.ResponseWriter, r *http.Request, ps Params) { arrived = 2000 }).SetPort("2000").SetHost("localhost:2000").SetHTTPSOnly()
+				// htx.AddRoute(test.Method, test.Url, test.Result, func(w http.ResponseWriter, r *http.Request, ps Params) { arrived = 2000 }).SetPort("2000").SetHost("localhost:2000").SetHTTPSOnly()
+				// htx.HandleFunc(test.Url, createFx(i)).Methods(test.Method).Port("2000").Host("localhost").Schemes("https")
+				htx.HandleFunc(test.Url, createFx(i)).Methods(test.Method).HostPort("localhost:2000").Schemes("https")
 			} else if test.Url == "/user/keys/:id" {
-				htx.AddRoute(test.Method, test.Url, test.Result, rptParams)
+				// htx.AddRoute(test.Method, test.Url, test.Result, rptParams)
+				htx.HandleFunc(test.Url, createFx(i)).Methods(test.Method)
 
 			} else if test.Url == "/repos/:owner/:repo/merges" {
-				htx.AddRoute(test.Method, test.Url, test.Result, rptParams2)
+				// htx.AddRoute(test.Method, test.Url, test.Result, rptParams2)
+				htx.HandleFunc(test.Url, createFx(i)).Methods(test.Method)
 
 			} else {
-				htx.AddRoute(test.Method, test.Url, test.Result, func(w http.ResponseWriter, r *http.Request, ps Params) { j := i; arrived = 1000 + j }) // 0
+				// htx.AddRoute(test.Method, test.Url, test.Result, func(w http.ResponseWriter, r *http.Request, ps Params) { j := i; arrived = 1000 + j }) // 0
+				// fmt.Printf("URL: %s %s\n", test.Url, debug.LF())
+				htx.HandleFunc(test.Url, createFx(i)).Methods(test.Method)
 			}
 		}
 	}
-	htx.GET("/r1", xHandle)
-	htx.POST("/r1", xHandle)
-	htx.PUT("/r1", xHandle)
-	htx.PATCH("/r1", xHandle)
-	htx.DELETE("/r1", xHandle)
-	htx.OPTIONS("/r1", xHandle)
-	htx.HEAD("/r1", xHandle)
-	htx.CONNECT("/r1", xHandle)
-	htx.TRACE("/r1", xHandle)
-	htx.GET("/r2/{blah:[a-z]}/:goo", xHandleR2_2)
-	htx.GET("/r2/{blah:[1-9]}/:goo", xHandleR2_3)
-	htx.GET("/r2/{blah:[A-Z]}/:goo", xHandleR2_4)
+	htx.HandleFunc("/r1", createFx(4000)).Methods("GET")
+	htx.HandleFunc("/r1", createFx(4001)).Methods("POST")
+	htx.HandleFunc("/r1", createFx(4002)).Methods("PUT")
+	htx.HandleFunc("/r1", createFx(4003)).Methods("PATCH")
+	htx.HandleFunc("/r1", createFx(4004)).Methods("DELETE")
+	htx.HandleFunc("/r1", createFx(4005)).Methods("OPTIONS")
+	htx.HandleFunc("/r1", createFx(4006)).Methods("HEAD")
+	htx.HandleFunc("/r1", createFx(4007)).Methods("CONNECT")
+	htx.HandleFunc("/r1", createFx(4008)).Methods("TRACE")
+	htx.HandleFunc("/r2/{blah:[a-z]}/:goo", createFx(4009)).Methods("GET")
+	htx.HandleFunc("/r2/{blah:[1-9]}/:goo", createFx(4010)).Methods("GET")
+	htx.HandleFunc("/r2/{blah:[A-Z]}/:goo", createFx(4011)).Methods("GET")
+	// htx.HandleFunc("/hp01", createFx(4012)).Methods("GET").Host("localhost").Port("2000")
+	htx.HandleFunc("/hp01", createFx(4012)).Methods("GET").Host("localhost").Port("2000")
+	htx.PathPrefix("/pp00/pp01/").HandleFunc("/pp02", createFx(4014))
+	htx.HandleFunc("/proto01", createFx(4016)).Methods("GET").Protocal("HTTP/1.1", "HTTP/2.0")
+	// Headers
+	htx.HandleFunc("/hdr01", createFx(4018)).Methods("GET").Headers("x-test-header", "def")
+	htx.HandleFunc("/hdr01", createFx(4017)).Methods("GET")
+	// Queries
+	htx.HandleFunc("/qry01", createFx(4020)).Methods("GET").Queries("id", "22")
+	htx.HandleFunc("/qry01", createFx(4021)).Methods("GET")
 
-	htx.OutputStatus = false
+	// r.HandleFunc(test.route, rptCalled).Methods("GET")
+
+	htx.setDefaults()
+	htx.buildRoutingTable()
 	htx.CompileRoutes()
-	htx.OutputStatusInfo()
-}
-
-// func (r *MuxRouter) LookupUrlViaHash2(w http.ResponseWriter, req *http.Request, m *int, data GoGoData) (found bool, ln int, rv Collision2) {
-func Test2017_newHash2(t *testing.T) {
-	// fmt.Printf("\nTest2017_newHash2\n")
-	r := htx
-
-	var url string
-	var found bool
-	var ln int
-	var item Collision2
-	var data GoGoData
-	var w http.ResponseWriter
-	var req http.Request
-
-	// dbHash2 = true
-	for i, test := range test2017Run {
-		if test.RunTest {
-			url = test.Url
-			m := (int(test.Method[0]) + (int(test.Method[1]) << 1))
-			// fmt.Printf("m=%d\n", m)
-			r.AllParam.NParam = 0
-			r.SplitOnSlash3(m, url, true)
-			db("Test2017_newHash2", "After SplitOnSlash3 ->%s<- ->%s<-\n r.Hash=%s r.Slash=%s r.NSl=%d\n", test.Url, r.CurUrl,
-				debug.SVar(r.Hash[0:r.NSl]), debug.SVar(r.Slash[0:r.NSl+1]), r.NSl)
-			found, ln, item = r.LookupUrlViaHash2(w, &req, &m, data)
-			// fmt.Printf("ln=%d\n", ln)
-			fail := false
-			if !found {
-				if test.ShouldBeFound {
-					t.Errorf("Not Found\n")
-					fail = true
-				}
-			} else if item.Hdlr != test.Expect {
-				t.Errorf("Test: %d, ->%s<- Expected Result = %d, got %d\n", i, url, test.Expect, item.Hdlr)
-				fail = true
-			} else {
-				// fmt.Printf("Test = %d\n", i)
-				r.GetArgs3(url, item.ArgPattern, item.ArgNames, ln)
-				// item.HandleFunc(w, req, r.AllParam)
-				// fmt.Printf("item.ArgPattern=%s Names=%s, r.AllParams=%s\n", item.ArgPattern, debug.SVar(item.ArgNames), r.AllParam.DumpParam())
-				if test.ExpectedParams != nil {
-					for j, eparam := range test.ExpectedParams {
-						if eparam.Type == ":" || eparam.Type == "*" || eparam.Type == "{" {
-							pv := r.AllParam.ByName(eparam.Name)
-							if pv != eparam.Value {
-								t.Errorf("Test: %d/%d, Expected Param %s==->%s<-, got ->%s<-\n", i, j, eparam.Name, eparam.Value, pv)
-								fail = true
-							}
-						}
-					}
-				}
-			}
-			_ = fail
-			//if dbFlag["dbMach"] {
-			//	if fail {
-			//		fmt.Printf("    Test Failed\n")
-			//	} else {
-			//		fmt.Printf("    Test PASSed\n")
-			//	}
-			//}
-		}
-	}
-
-	_, _, _ = found, ln, item
+	// htx.OutputStatusInfo()
 }
 
 var ServeHTTP_Tests = []struct {
@@ -729,17 +772,197 @@ var ServeHTTP_Tests = []struct {
 	Rp            string
 	CookieName    string
 	CookieValue   string
+	Proto         string
+	Headers       string // Headers       map[string][]string
+	Protocal      string
 }{
-	/*  00 */ {true, "GET", "https", "localhost:2000", "/xyz01", 2000, true, "", "", "", ""},
-	/*  01 */ {true, "GET", "http", "localhost:2000", "/xyz01", 1265, false, "", "", "", ""},
-	/*  02 */ {true, "GET", "https", "localhost:2001", "/xyz01", 1265, false, "", "", "", ""},
-	/*  03 */ {true, "GET", "http", "localhost:2001", "/xyz01", 1265, false, "", "", "", ""},
-	/*  04 */ {true, "GET", "https", "127.0.0.1:2001", "/xyz01", 1265, false, "", "", "", ""},
-	/*  05 */ {true, "GET", "http", "127.0.0.1:2001", "/xyz01", 1265, false, "", "", "", ""},
-	/*  06 */ {true, "GET", "http", "localhost:8090", "/img/checkbox_yes.png", 1265, true, "", "", "", ""},
-	/*  07 */ {true, "GET", "http", "localhost:8090", "/user/keys/1234", 4000, true, "left=55&right=22&id=IdOnUrlWrong&x=12&x=15",
-		`[{"Name":"right","Value":"22","From":1,"Type":113},{"Name":"id","Value":"1234","From":0,"Type":58},{"Name":"left","Value":"55","From":1,"Type":113}]`, "top", "999"},
-	/*  08 */ {true, "GET", "http", "localhost:8090", "/user", 1265, true, "left=66&right=22&id=IdOnUrlWrong&METHOD=PATCH", "", "", ""},
+	/*  00 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "https",
+		Host:          "localhost:2000",
+		Url:           "/xyz01",
+		Expect:        263,
+		ShouldBeFound: true,
+	},
+	/*  01 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "localhost:2000",
+		Url:           "/xyz01",
+		Expect:        13,
+		ShouldBeFound: false,
+	},
+	/*  02 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "https",
+		Host:          "localhost:2001",
+		Url:           "/xyz01",
+		Expect:        13,
+		ShouldBeFound: false,
+	},
+	/*  03 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "localhost:2001",
+		Url:           "/xyz01",
+		Expect:        13,
+		ShouldBeFound: false,
+	},
+	/*  04 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "https",
+		Host:          "127.0.0.1:2001",
+		Url:           "/xyz01",
+		Expect:        13,
+		ShouldBeFound: false,
+	},
+	/*  05 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "127.0.0.1:2001",
+		Url:           "/xyz01",
+		Expect:        13,
+		ShouldBeFound: false,
+	},
+	/*  06 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/img/checkbox_yes.png",
+		Expect:        20,
+		ShouldBeFound: true,
+	},
+	/*  07 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/user/keys/1234",
+		Expect:        258,
+		ShouldBeFound: true,
+		RawQuery:      "left=55&right=22&id=IdOnUrlWrong&x=12&x=15",
+		Rp:            `[{RunTest:"Name":"right","Value":"22","From":1,"Type":113},{"Name":"id","Value":"1234","From":0,"Type":58},{"Name":Host:"left","Value":"55","From":1,"Type":113}]`,
+		CookieName:    "top",
+		CookieValue:   "999",
+	},
+	/*  08 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/user",
+		Expect:        243,
+		ShouldBeFound: true,
+		RawQuery:      "left=66&right=22&id=IdOnUrlWrong&METHOD=HEAD",
+	},
+	/*  09 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "https",
+		Host:          "localhost:2000",
+		Url:           "/hp01",
+		Expect:        4012,
+		ShouldBeFound: true,
+	},
+	/*  10 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "https",
+		Host:          "localhost:2000",
+		Url:           "/pp00/pp01/pp02",
+		Expect:        4014,
+		ShouldBeFound: true,
+	},
+	/*  11 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "https",
+		Host:          "localhost:2000",
+		Url:           "/pp00/pp01/pp02",
+		Expect:        4014,
+		ShouldBeFound: true,
+		Proto:         "HTTP/2.0",
+		Headers:       `{"x-test-header":["abc","def"],"Content-Type":["application/json"],"X-Requested-With":["XMLHttpRequest"]}`,
+	},
+	/*  12 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "https",
+		Host:          "localhost:2000",
+		Url:           "/proto01",
+		Expect:        4016,
+		ShouldBeFound: true,
+		Proto:         "HTTP/2.0",
+	},
+	/*  13 */ { // test failed because - no negatie match - fix sort to include extended matches
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "https",
+		Host:          "localhost:2000",
+		Url:           "/proto01",
+		Expect:        13,
+		ShouldBeFound: true,
+		Proto:         "HTTP/1.0",
+	},
+	/*  14 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "https",
+		Host:          "localhost:2000",
+		Url:           "/hdr01",
+		Expect:        4017,
+		ShouldBeFound: true,
+		Proto:         "HTTP/2.0",
+	},
+	/*  15 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "https",
+		Host:          "localhost:2000",
+		Url:           "/hdr01",
+		Expect:        4018,
+		ShouldBeFound: true,
+		Proto:         "HTTP/2.0",
+		Headers:       `{"X-Test-Header":["abc","def"],"Content-Type":["application/json"],"X-Requested-With":["XMLHttpRequest"]}`,
+	},
+	/*  16 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "https",
+		Host:          "localhost:2000",
+		Url:           "/hdr01",
+		Expect:        4017,
+		ShouldBeFound: true,
+		Proto:         "HTTP/2.0",
+		Headers:       `{"x-test-header":["xyz","uwv"],"Content-Type":["application/json"],"X-Requested-With":["XMLHttpRequest"]}`,
+	},
+	/*  17 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/qry01",
+		Expect:        4020,
+		ShouldBeFound: true,
+		RawQuery:      "left=55&right=22&id=22&x=12&x=15",
+	},
+	/*  18 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/qry01",
+		Expect:        4021,
+		ShouldBeFound: true,
+		RawQuery:      "left=55&right=23&id=23&x=12&x=15",
+	},
 }
 
 // func (r *MuxRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -763,42 +986,55 @@ func Test_1_ServeHTTP(t *testing.T) {
 	req.URL = &url
 
 	for i, v := range ServeHTTP_Tests {
-		req.URL.Path = v.Url
-		req.URL.RawQuery = v.RawQuery
-		req.Method = v.Method
-		req.Host = v.Host
-		req.TLS = nil
-		req.RemoteAddr = "[::1]:53248"
-		// req.RequestURI = v.HTTPS + "://" + v.Host + v.Url + "?" + v.RawQuery
-		if v.RawQuery != "" {
-			req.RequestURI = v.Url + "?" + v.RawQuery
-		} else {
-			req.RequestURI = v.Url
-		}
-		req.Proto = "HTTP/1.1"
-		req.Header = make(http.Header)
-		if v.HTTPS == "https" {
-			req.TLS = &tls
-		}
-		if v.CookieName != "" {
-			c := http.Cookie{Name: v.CookieName, Value: v.CookieValue}
-			req.AddCookie(&c)
-		}
-		arrived = 0
-		// ---------------------------------------------------------------------------------------------------
-		r.ServeHTTP(w, &req)
-		// ---------------------------------------------------------------------------------------------------
-		if arrived != v.Expect {
-			t.Errorf("Test[%d]: Loop Expected to have handler called. %d\n", i, arrived)
-		} else if v.Rp != "" {
-			fmt.Printf("%s\n", rpTest)
-			//var aa, bb map[int]map[string]interface{}
-			//err0 := json.Unmarshal([]byte(v.Rp), &aa)
-			//err1 := json.Unmarshal([]byte(rpTest), &bb)
-			//eq := reflect.DeepEqual(aa, bb)
-			//if !eq || err0 != nil || err1 != nil {
-			//	t.Errorf("Test[%d]: Loop Expected:\n%s\nGot:\n%s, err0=%v err1=%v\n", i, v.Rp, rpTest, err0, err1)
-			//}
+		if v.RunTest {
+			req.URL.Path = v.Url
+			req.URL.RawQuery = v.RawQuery
+			req.Method = v.Method
+			req.Host = v.Host
+			req.TLS = nil
+			req.RemoteAddr = "[::1]:53248"
+			// req.RequestURI = v.HTTPS + "://" + v.Host + v.Url + "?" + v.RawQuery
+			if v.RawQuery != "" {
+				req.RequestURI = v.Url + "?" + v.RawQuery
+			} else {
+				req.RequestURI = v.Url
+			}
+			req.Proto = "HTTP/1.1"
+			if v.Proto != "" {
+				req.Proto = v.Proto
+			}
+			req.Header = make(http.Header)
+			if v.Headers != "" {
+				err := json.Unmarshal([]byte(v.Headers), &req.Header)
+				if err != nil {
+					fmt.Printf("Error(20032): %v, %s, Headers ->%s<_\n", err, debug.LF(), v.Headers)
+				}
+			}
+			if v.HTTPS == "https" {
+				req.TLS = &tls
+			}
+			if v.CookieName != "" {
+				c := http.Cookie{Name: v.CookieName, Value: v.CookieValue}
+				req.AddCookie(&c)
+			}
+			arrived = 0
+			// ---------------------------------------------------------------------------------------------------
+			r.ServeHTTP(w, &req)
+			// ---------------------------------------------------------------------------------------------------
+			// fmt.Printf("route_i = %d, r.route[%d][ %s %s ]\n", g_route_i, g_route_i, debug.SVar(r.routes[g_route_i].DMethods), r.routes[g_route_i].DPath)
+			if arrived != v.Expect {
+				t.Errorf("Test[%d][%s %s %s %s]: Loop Expected to have handler called. Got:%d\n",
+					i, v.Method, v.HTTPS, v.Host, v.Url, arrived)
+			} else if v.Rp != "" {
+				fmt.Printf("%s\n", rpTest)
+				//var aa, bb map[int]map[string]interface{}
+				//err0 := json.Unmarshal([]byte(v.Rp), &aa)
+				//err1 := json.Unmarshal([]byte(rpTest), &bb)
+				//eq := reflect.DeepEqual(aa, bb)
+				//if !eq || err0 != nil || err1 != nil {
+				//	t.Errorf("Test[%d]: Loop Expected:\n%s\nGot:\n%s, err0=%v err1=%v\n", i, v.Rp, rpTest, err0, err1)
+				//}
+			}
 		}
 	}
 
@@ -812,567 +1048,4 @@ func Test_1_ServeHTTP(t *testing.T) {
 		t.Errorf("Test: Expected to have clean pattern\n")
 	}
 
-	if false {
-		req.URL = &url
-		req.URL.Path = "/img/checkbox_yes.png"
-		req.Method = "GET"
-		req.Host = "localhost:8090" // new to HashHost test
-		//var tls tls.ConnectionState
-		//req.TLS = &tls
-		r.NotFound = func(w http.ResponseWriter, req *http.Request) {
-			arrived = -1
-			// fmt.Printf("Test2017_ServeHTTP - not found %s\n", debug.LF())
-		}
-
-		// ----------------------------------------------------------------------------------------------
-		// Validate a path that is un-related to the host of test.
-		// ----------------------------------------------------------------------------------------------
-		arrived = 0
-		// fmt.Printf("This One\n")
-		r.ServeHTTP(w, &req)
-		if arrived != 1265 {
-			t.Errorf("Test: Expected to have handler called. %d\n", arrived)
-		}
-
-		// ----------------------------------------------------------------------------------------------
-		// Do a test that requreis the HOST test and should be found
-		// ----------------------------------------------------------------------------------------------
-		// /* 108 */ {true, "GET", "/xyz/xyz/xyz", 300, true, nil},
-		arrived = 0
-		req.URL.Path = "/xyz/xyz/xyz"
-		r.ServeHTTP(w, &req)
-		if arrived != 2265 {
-			t.Errorf("Test: Expected to have handler called. %d\n", arrived)
-		}
-
-		// ----------------------------------------------------------------------------------------------
-		// Do a test that requreis the HOST test and should NOT be found
-		// ----------------------------------------------------------------------------------------------
-		arrived = 0
-		req.URL.Path = "/xyz/xyz/xyz"
-		req.Host = "192.168.0.140:8000" // new to HashHost test
-		r.ServeHTTP(w, &req)
-		if arrived != 1265 {
-			t.Errorf("Test: Expected to have FILE handler called, arrived=%d.\n", arrived)
-		}
-	}
 }
-
-func Test_2_ServeHTTP(t *testing.T) {
-
-	r := htx
-	var w http.ResponseWriter
-	url := "/repos/OWNER/REPO/merges"
-
-	var jsonStr = []byte(`{"title":"Buy cheese and bread for breakfast.","tInt":100,"bBool":false,"fFloat":1.2,"cplx":{"a":2,"b":[1,2,3]}}`)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	if err != nil {
-		t.Errorf("Test: Got an error creating a request, %s\n", err)
-	}
-	req.Header.Set("X-Custom-Header", "myvalue")
-	req.Header.Set("Content-Type", "application/json")
-
-	arrived = 0
-	rpTest = ""
-	r.ServeHTTP(w, req)
-	fmt.Printf("POST-1 (json): %s\n", rpTest)
-	if arrived != 4008 {
-		t.Errorf("Test: %d\n", arrived)
-	}
-
-}
-
-func Test_3_ServeHTTP(t *testing.T) {
-
-	r := htx
-	var w http.ResponseWriter
-	uuu := "/repos/OWNER/REPO/merges"
-
-	data := url.Values{}
-	data.Set("name", "foo")
-	data.Add("surname", "bar")
-
-	req, err := http.NewRequest("POST", uuu, bytes.NewBufferString(data.Encode()))
-	if err != nil {
-		t.Errorf("Test: Got an error creating a request, %s\n", err)
-	}
-	req.Header.Set("X-Custom-Header", "myvalue")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Content-Length", strconv.Itoa(len(data.Encode())))
-
-	arrived = 0
-	rpTest = ""
-	r.ServeHTTP(w, req)
-	fmt.Printf("POST-2 (strd): %s\n", rpTest2)
-	if arrived != 4008 {
-		t.Errorf("Test: %d\n", arrived)
-	}
-
-}
-
-// 283 ns - 0 allocations per op.
-func Benchmark_ServeHTTP(b *testing.B) {
-	r := htx
-	var req http.Request
-	var w http.ResponseWriter
-	var url url.URL
-
-	req.URL = &url
-	req.URL.Path = "/i/yes.png"            // 92 ns - miss
-	req.URL.Path = "/img/checkbox_yes.png" // 283 ns - match with wild card
-	req.Method = "GET"
-
-	for n := 0; n < b.N; n++ {
-		r.ServeHTTP(w, &req)
-	}
-}
-
-func Test_db(t *testing.T) {
-	db("bob", "%s %s\n", "test", "of debug and dump functions")
-	dbFlag["dbMatch"] = false
-	var s string
-	s = dumpCType(IsWord | MultiUrl | SingleUrl | Dummy)
-	if s != "(IsWord|MultiUrl|SingleUrl|Dummy)" {
-		t.Errorf("Test: dumpCType not working correctly\n")
-	}
-	// ToDo
-	//	 prams.go
-	//		 func (ps Params) DumpParam() (rv string) {
-	//		 func (ps Params) HasName(name string) (rv bool) {
-}
-
-func Test_MatchPort(t *testing.T) {
-	var req http.Request
-	var url url.URL
-
-	req.URL = &url
-	req.URL.Path = "/img/checkbox_yes.png" // 283 ns - match with wild card
-	req.Method = "GET"
-	sData[0] = "8000"
-	sData[1] = "localhost:8001"
-
-	req.Host = "localhost:8000"
-	b := MatchPortFunc(&req, 0)
-	if !b {
-		t.Errorf("Test: MatchPort not working correctly\n")
-	}
-
-	req.Host = "[::1]:8000"
-	b = MatchPortFunc(&req, 0)
-	if !b {
-		t.Errorf("Test: MatchPort not working correctly\n")
-	}
-
-	req.Host = "[::1]:8001"
-	b = MatchPortFunc(&req, 0)
-	if b {
-		t.Errorf("Test: MatchPort not working correctly\n")
-	}
-
-	req.Host = "[::1]:8001"
-	b = MatchHostFunc(&req, 1)
-	if b {
-		t.Errorf("Test: MatchPort not working correctly\n")
-	}
-
-	req.Host = "localhost:8001"
-	b = MatchHostFunc(&req, 1)
-	if !b {
-		t.Errorf("Test: MatchPort not working correctly\n")
-	}
-
-	b = MatchTlsFunc(&req, 1)
-	if b {
-		t.Errorf("Test: MatchTls not working correctly\n")
-	}
-
-	var tls tls.ConnectionState
-	req.TLS = &tls
-
-	b = MatchTlsFunc(&req, 1)
-	if !b {
-		t.Errorf("Test: MatchTls not working correctly\n")
-	}
-
-}
-
-// 25 ns - for 20 bytes
-func oldBenchmark_StrCmp(b *testing.B) {
-
-	var aa [20]uint8
-	var bb [20]uint8
-
-	for n := 0; n < b.N; n++ {
-		for i := 0; i < 20; i++ {
-			if aa[i] == bb[i] {
-			}
-		}
-	}
-}
-
-// 47.9 ns - No Early Exit
-// 46.1 ns - Early Exit
-func Benchmark2017_newHash2_hash(b *testing.B) {
-	var m int
-
-	Method := "GET"
-	url := "/index.html"
-
-	for n := 0; n < b.N; n++ {
-		m = (int(Method[0]) + (int(Method[1]) << 1))
-		htx.SplitOnSlash3(m, url, true)
-	}
-}
-
-// /index.html 126 ns
-// /planb/x3.x5 158 ns
-/*
-PASS
-BenchmarkOfSplitOnSlash3_long	    10000000	       151 ns/op	       0 B/op	       0 allocs/op
-BenchmarkOfSplitOnSlash3_short	   100000000	        26.0 ns/op	       0 B/op	       0 allocs/op
-Benchmark2017_newHash2_hash	   	    50000000	        42.5 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFullUrlLookupWithParams	20000000	       128 ns/op	       0 B/op	       0 allocs/op
-*/
-func BenchmarkFullUrlLookupWithParams(b *testing.B) {
-
-	r := htx
-
-	var url string
-	var found bool
-	var ln, m int
-	var item Collision2
-	var data GoGoData
-	var w http.ResponseWriter
-	var req http.Request
-
-	Method := "GET"
-	// 							               Regular		Early Exit
-	url = "/planb/x3/x5"                    // 158 ns		160 ns (found)
-	url = "/planb/vD-data/t2/yy"            // 230 ns		232 ns (found)
-	url = "/index.html"                     // 126 ns		113 ns (early exit)
-	url = "/static/js/jquery-1.10.4.min.js" // 162 ns       119 ns (early exit)
-
-	for n := 0; n < b.N; n++ {
-		m = (int(Method[0]) + (int(Method[1]) << 1))
-		r.SplitOnSlash3(m, url, true)
-		found, ln, item = r.LookupUrlViaHash2(w, &req, &m, data)
-		if found {
-			r.GetArgs3(url, item.ArgPattern, item.ArgNames, ln)
-		}
-	}
-
-	_, _, _ = found, ln, item
-}
-
-//
-
-var aRe *regexp.Regexp
-
-func init() {
-	aRe = regexp.MustCompile("^[0-9][0-9]*$")
-}
-
-// about 150 ns per RE match
-func OldBenchmarkSpeedOfRe(b *testing.B) {
-	Pat0 := "abcdefghi"
-	Pat1 := "123abcdefghi"
-	for n := 0; n < b.N; n++ {
-		matched := aRe.MatchString(Pat0)
-		_ = matched
-		matched = aRe.MatchString(Pat1)
-		_ = matched
-	}
-}
-
-var xxx [800]int
-
-// 0.32 ns to do array index
-func OldBenchmarkOfArrayAccess(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		matched := xxx[5]
-		_ = matched
-	}
-}
-
-// 17.2 to 20 ns for a map[string]int lookup
-func OldBenchmarkOfMapLookup(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		matched := validMethod["GET"]
-		_ = matched
-	}
-}
-
-func HashTest4(m uint8, Pat string) (ln int, h int, ht int) {
-	ln = len(Pat)
-	h = int(m)
-	for i := 1; i < len(Pat); i++ {
-		// fmt.Printf("Used ->%c<-\n", Pat[i])
-		h += int(Pat[i])
-		h += (h << 10)
-		h = h ^ (h >> 6)
-	}
-	ht = h
-	h += (h << 3)
-	h = h ^ (h >> 11)
-	h += (h << 15)
-	h = ((h & bitMask) ^ ((h >> nBits) & bitMask))
-	return
-}
-
-// 59.3 ns
-func OldBenchmarkOfMapHash(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		ln, h, ht := HashTest4(12, "/repos/:1232323/:1232323/releases")
-		_, _, _ = ln, h, ht
-	}
-}
-
-// 69.3 ns - old before converting to DFSA
-// 29.9 ns now
-func OldBenchmarkOfSplitOnSlash3(b *testing.B) {
-	htx := New()
-
-	url := "/repos/julienschmidt/httprouter/stargazers"
-	for n := 0; n < b.N; n++ {
-		htx.SplitOnSlash3(1, url, true)
-	}
-}
-
-//
-// From the most common T::T patter for 4 long, to the least common
-// You only have to go through the number of patterns
-// We can use a bigger pattern thatn just T::T, could be T* or *
-// 0 can map to most common, by sort of frequencey of T::T - so 0 T::T, 1 T:T:, no other patterns
-//
-
-func OldTestSplitOfSlash(t *testing.T) {
-	// t.Errorf("Test: %d, Expected Result = %s, got %s\n", i, test.ExpectRe, re)
-	htx := New()
-
-	url := "/repos/julienschmidt/httprouter/stargazers"
-	htx.SplitOnSlash3(1, url, false)
-	// fmt.Printf("NSl = %d: ->%s<- Slash %s\n", htx.NSl, htx.CurUrl, debug.SVar(htx.Slash[0:htx.NSl]))
-	var r [20]string
-	for i := 0; i < 32; i++ {
-		for j := 0; j < (htx.NSl - 1); j++ {
-			// fmt.Printf("i=%d j=%d\n", i, j)
-			r[j] = htx.CurUrl[htx.Slash[j]+1 : htx.Slash[j+1]]
-			if (i & (1 << uint(j))) != 0 {
-				r[j] = ":"
-			}
-		}
-		// fmt.Printf("%d: %s\n", i, debug.SVar(r[0:htx.NSl-1]))
-	}
-}
-
-// About 15 ns to gen a new array, 0 alloc
-func OldBenchmarkSplitOfSlash_GenURL(b *testing.B) {
-	htx := New()
-
-	url := "/repos/julienschmidt/httprouter/stargazers"
-	htx.SplitOnSlash3(1, url, false)
-	var r [20]string
-
-	for n := 0; n < b.N; n++ {
-		// htx.SplitOnSlash(1, url)
-		for i := 0; i < 2; i++ {
-			for j := 0; j < (htx.NSl - 1); j++ {
-				r[j] = htx.CurUrl[htx.Slash[j]+1 : htx.Slash[j+1]]
-				if (i & (1 << uint(j))) != 0 {
-					r[j] = ":"
-				}
-			}
-		}
-	}
-	_ = r
-
-}
-
-// Slower than a string hash -
-func OldBenchmarkOfMapLookupInt(b *testing.B) {
-	mapOfNo := make(map[int]int)
-	mapOfNo[5] = 1
-	mapOfNo[3] = 1
-	mapOfNo[7] = 1
-	mapOfNo[9] = 1
-	mapOfNo[10] = 1
-	mapOfNo[15] = 1
-	mapOfNo[17] = 1
-	mapOfNo[22] = 1
-	mapOfNo[18] = 1
-	mapOfNo[55] = 1
-	for n := 0; n < b.N; n++ {
-		matched := mapOfNo[12]
-		_ = matched
-	}
-}
-
-// Time used based on number of keys, 83.3 ns - with 3 keys
-type Key struct {
-	p1, p2, p3 string
-}
-
-// 83.3 ns - grows 20+ ns per key in struct
-func OldBenchmarkKeyMap(b *testing.B) {
-	lookup := make(map[Key]int)
-	lookup[Key{"repos", "stargazers", "a"}] = 1
-	lookup[Key{"repos", "starga1ers", "a"}] = 1
-	lookup[Key{"repos", "starga2ers", "a"}] = 1
-	lookup[Key{"repos", "starga3ers", "a"}] = 1
-	lookup[Key{"repos", "starga4ers", "a"}] = 1
-	lookup[Key{"repos", "starga5ers", "a"}] = 1
-	lookup[Key{"repos", "starg6zers", "a"}] = 1
-	lookup[Key{"repos", "starg7zers", "a"}] = 1
-	lookup[Key{"repos", "starg8zers", "a"}] = 1
-	lookup[Key{"r9pos", "stargazers", "a"}] = 1
-	lookup[Key{"rapos", "stargazers", "a"}] = 1
-	lookup[Key{"rbpos", "starAazers", "a"}] = 1
-	lookup[Key{"rcpos", "stargazers", "a"}] = 1
-	for n := 0; n < b.N; n++ {
-		x := lookup[Key{"repos", "stargazers", "a"}]
-		_ = x
-	}
-}
-
-// 101 ns - per concat - Plus 1 memory alloc
-func OldBenchmarkStringConcat(b *testing.B) {
-	a := []string{"repos", ":", ":", "stargazers"}
-	for n := 0; n < b.N; n++ {
-		x := a[0] + a[1] + a[2] + a[3]
-		_ = x
-	}
-}
-
-func concatArray(n int, s []string, out []uint8) (no int) {
-	no = 0
-	k := 0
-	for i := 0; i < n; i++ {
-		for j := 0; j < len(s[i]); j++ {
-			out[k] = s[i][j]
-			k++
-		}
-	}
-	no = k
-	return
-}
-
-// 42 ns
-func OldBenchmarkStringConcat2(b *testing.B) {
-	a := []string{"repos", ":", ":", "stargazers"}
-	var x [100]uint8
-	for n := 0; n < b.N; n++ {
-		l := concatArray(4, a, x[:])
-		_ = l
-	}
-}
-
-func add(m map[string]map[string]int, path, country string) {
-	mm, ok := m[path]
-	if !ok {
-		mm = make(map[string]int)
-		m[path] = mm
-	}
-	mm[country] = 1
-}
-
-// 20.6 ns - lookup multiple keys
-func OldBenchmark2KeyMap(b *testing.B) {
-	lookup := make(map[string]map[string]int)
-
-	add(lookup, "a", "b")
-	add(lookup, "aaaaa", "baaaa")
-	add(lookup, "abbbb", "bcccc")
-	add(lookup, "a", "bddd")
-	add(lookup, "a", "bddd")
-	add(lookup, "a", "star")
-	add(lookup, "a", "beee")
-	x, ok := lookup["a"]["star"]
-
-	for n := 0; n < b.N; n++ {
-		x, ok = lookup["a"]["star"]
-		_ = x
-	}
-	if !ok {
-		fmt.Printf("\n! Ok\n")
-	}
-}
-
-func Test_UrlToCleanRoute(t *testing.T) {
-	url := "/abc/def/ghi"
-	pat := "T:T"
-
-	htx.CurUrl = url
-	htx.Slash[0] = 0
-	htx.Slash[1] = 4
-	htx.Slash[2] = 8
-	htx.Slash[3] = len(url)
-	htx.NSl = 3
-	Result := htx.UrlToCleanRoute(pat)
-	if Result != "/abc/:/ghi" {
-		t.Errorf("Test: %d, Expected Result = %d, got %d\n", 0, "/abc/:/ghi", Result)
-	}
-}
-
-func Test_MinInt(t *testing.T) {
-	a := minInt(1, 2)
-	if a != 1 {
-		t.Errorf("Test: failed\n")
-	}
-	a = minInt(2, 1)
-	if a != 1 {
-		t.Errorf("Test: failed\n")
-	}
-
-}
-
-func dumpReArray(tmpRe []Re) (rv string) {
-	rv = "{{ "
-	com := ""
-	for i, v := range tmpRe {
-		rv += com + fmt.Sprintf(" at[%d] Pos=%d Re=%s Name=%s ", i, v.Pos, v.Re, v.Name)
-		com = ","
-	}
-	rv += " }}"
-	return
-}
-
-func (r *MuxRouter) OutputStatusInfo() {
-	if !r.OutputStatus {
-		return
-	}
-	nc := 0
-	for i, v := range r.Hash2Test {
-		if v > 0 {
-			fmt.Printf("[%4d] %x %s\n", i, r.LookupResults[v].cType, dumpCType(r.LookupResults[v].cType))
-			if (r.LookupResults[v].cType & MultiUrl) != 0 {
-				nc++
-				for j, w := range r.LookupResults[v].Multi {
-					ns := numChar(j, '/')
-					fmt.Printf("   %2d %s\n", ns, j)
-					_ = w
-				}
-			}
-		}
-	}
-	fmt.Printf("Number of Collisions = %d\n", nc)
-}
-
-// -----------------------------------------------------------------------------------------------------
-
-type mockResponseWriter struct{}
-
-func (m *mockResponseWriter) Header() (h http.Header) {
-	return http.Header{}
-}
-
-func (m *mockResponseWriter) Write(p []byte) (n int, err error) {
-	return len(p), nil
-}
-
-func (m *mockResponseWriter) WriteString(s string) (n int, err error) {
-	return len(s), nil
-}
-
-func (m *mockResponseWriter) WriteHeader(int) {}
-
-/* vim: set noai ts=4 sw=4: */
