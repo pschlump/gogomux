@@ -5,7 +5,7 @@ package gogomux
 //
 // (C) Philip Schlump, 2013-2014.
 // Version: 0.4.3
-// BuildNo: 803
+// BuildNo: 804
 //
 // /Users/corwin/Projects/go-lib/gogomux
 //
@@ -78,6 +78,7 @@ var testRuns = []struct {
 	{"/./../bb/cc/dd/../../ee/../a.html//", `["/","bb","a.html"]`},
 	{"/./../.../cc/dd/../../ee/../a.html//", `["/","...","a.html"]`},
 	{"/redis/planb/", `["/","redis","planb"]`},
+	{"//////////aa", `["/","aa"]`},
 	/*
 	 */
 }
@@ -110,6 +111,7 @@ func TestFixPath(t *testing.T) {
 	for k, test := range testRuns {
 		rv = rv[:25]
 		n := FixPath(test.param, rv, 25)
+		// fmt.Printf("Testing %s\n", test.param)
 		rv = rv[:n]
 		if debug.SVar(rv) != test.result {
 			t.Errorf("Test %d - FixPath(%v) = %v, want %v", k, test.param, debug.SVar(rv), test.result)

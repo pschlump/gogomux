@@ -1,20 +1,20 @@
 package gogomux
 
-import (
-	"fmt"
-
-	"./debug"
-)
-
 //
 // Go Go Mux - Go Fast Mux / Router for HTTP requests
 //
 // (C) Philip Schlump, 2013-2014.
 // Version: 0.4.3
-// BuildNo: 803
+// BuildNo: 804
 //
 // /Users/corwin/Projects/gogo2
 //
+
+import (
+	"fmt"
+
+	"./debug"
+)
 
 // Table of valid methods,  If other http-methods are created or used they should be added to this list.
 var validMethod map[string]bool

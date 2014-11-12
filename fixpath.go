@@ -1,11 +1,13 @@
 package gogomux
 
+import "./debug"
+
 //
 // Go Go Mux - Go Fast Mux / Router for HTTP requests
 //
 // (C) Philip Schlump, 2013-2014.
 // Version: 0.4.3
-// BuildNo: 803
+// BuildNo: 804
 //
 // /Users/corwin/Projects/go-lib/gogomux
 //
@@ -49,7 +51,7 @@ s0:
 	}
 s1:
 	//if debug {
-	//	fmt.Printf("s1:   l=%d i=%d rv_n=%d beg=%d end=%d ->%s<-, rv=%s\n", l, i, rv_n, beg, end, pth, rvAsStr(rv, rv_n))
+	// fmt.Printf("s1:   l=%d i=%d rv_n=%d beg=%d end=%d ->%s<-, rv=%s\n", l, i, rv_n, beg, end, pth, rvAsStr(rv, rv_n))
 	//}
 	rv[rv_n] = "/"
 	rv_n++
@@ -168,7 +170,7 @@ s21:
 
 // var debug = false
 
-//func rvAsStr(rv *[]string, _ int) (s string) {
-//	s = SVarrv
-//	return
-//}
+func rvAsStr(rv []string, n int) (s string) {
+	s = debug.SVar(rv[0:n])
+	return
+}

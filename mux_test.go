@@ -1,10 +1,10 @@
+package gogomux
+
 // Copyright 2012 The GoGoMux Authors.  All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
 // Some of the code in this is derived from Gorilla Mux and HttpRouter.
-
-package gogomux
 
 import (
 	"crypto/tls"
@@ -643,6 +643,7 @@ var test2017Run = []struct {
 			NV{Type: "?", Name: "id", Value: "112"},
 			NV{Type: "?", Name: "testNo", Value: "117"},
 		}},
+	/* 118 */ {true, "GET", "/repos/:owner/:repo/collaborators", 4008, false, nil},
 }
 
 var rpTest string
@@ -658,6 +659,8 @@ func rptParams(w http.ResponseWriter, r *http.Request, ps Params) {
 func rptParams2(w http.ResponseWriter, r *http.Request, ps Params) {
 	arrived = 4008
 	s := ps.DumpParam()
+	ps.CreateSearch()
+	fmt.Printf(" *************************************************************************\n")
 	rpTest2 = s
 	// fmt.Printf("\nrptParams: %s\n", s)
 	done := false
@@ -667,6 +670,8 @@ func rptParams2(w http.ResponseWriter, r *http.Request, ps Params) {
 		n, t, done = ps.ByPostion(i)
 		fmt.Printf("At [%d] %s ->%s<-\n", i, n, t)
 	}
+	xx := ps.ByName("id")
+	_ = xx
 	// func (ps Params) ByPostion(pos int) ( s string, inRange bool ) {
 	w.Write([]byte("Hello Silly World<br>"))
 }
@@ -722,6 +727,9 @@ func init() {
 				// htx.AddRoute(test.Method, test.Url, test.Result, rptParams2)
 				htx.HandleFunc(test.Url, createFx(i)).Methods(test.Method)
 
+			} else if test.Url == "/repos/:owner/:repo/collaborators" {
+				htx.HandleFunc(test.Url, rptParams2).Methods(test.Method)
+
 			} else {
 				// htx.AddRoute(test.Method, test.Url, test.Result, func(w http.ResponseWriter, r *http.Request, ps Params) { j := i; arrived = 1000 + j }) // 0
 				// fmt.Printf("URL: %s %s\n", test.Url, debug.LF())
@@ -729,7 +737,7 @@ func init() {
 			}
 		}
 	}
-	htx.HandleFunc("/r1", createFx(4000)).Methods("GET")
+	htx.HandleFunc("/r1", createFx(4000)).Methods("GET").Name("AName").Id(133)
 	htx.HandleFunc("/r1", createFx(4001)).Methods("POST")
 	htx.HandleFunc("/r1", createFx(4002)).Methods("PUT")
 	htx.HandleFunc("/r1", createFx(4003)).Methods("PATCH")
@@ -746,7 +754,7 @@ func init() {
 	htx.PathPrefix("/pp00/pp01/").HandleFunc("/pp02", createFx(4014))
 	htx.HandleFunc("/proto01", createFx(4016)).Methods("GET").Protocal("HTTP/1.1", "HTTP/2.0")
 	// Headers
-	htx.HandleFunc("/hdr01", createFx(4018)).Methods("GET").Headers("x-test-header", "def")
+	htx.HandleFunc("/hdr01", createFx(4018)).Headers("x-test-header", "def").Methods("GET")
 	htx.HandleFunc("/hdr01", createFx(4017)).Methods("GET")
 	// Queries
 	htx.HandleFunc("/qry01", createFx(4020)).Methods("GET").Queries("id", "22")
@@ -963,6 +971,16 @@ var ServeHTTP_Tests = []struct {
 		ShouldBeFound: true,
 		RawQuery:      "left=55&right=23&id=23&x=12&x=15",
 	},
+	/*  19 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/repos/:owner/:repo/collaborators",
+		Expect:        4008,
+		ShouldBeFound: true,
+		RawQuery:      "left=55&right=23&id=23&x=12&x=15",
+	},
 }
 
 // func (r *MuxRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -985,6 +1003,11 @@ func Test_1_ServeHTTP(t *testing.T) {
 	}
 	req.URL = &url
 
+	rr := dumpCType(MultiUrl | SingleUrl | Dummy | IsWord)
+	if rr != "(IsWord|MultiUrl|SingleUrl|Dummy)" {
+		t.Errorf("Test dumpCType failed %s\n", rr)
+	}
+
 	for i, v := range ServeHTTP_Tests {
 		if v.RunTest {
 			req.URL.Path = v.Url
@@ -1005,6 +1028,9 @@ func Test_1_ServeHTTP(t *testing.T) {
 			}
 			req.Header = make(http.Header)
 			if v.Headers != "" {
+				// func (r *MuxRouter) Headers(pairs ...string) *ARoute {
+				// Headers:       `{"x-test-header":["abc","def"],"Content-Type":["application/json"],"X-Requested-With":["XMLHttpRequest"]}`,
+				// fmt.Printf("Creating header\n")
 				err := json.Unmarshal([]byte(v.Headers), &req.Header)
 				if err != nil {
 					fmt.Printf("Error(20032): %v, %s, Headers ->%s<_\n", err, debug.LF(), v.Headers)
@@ -1049,3 +1075,92 @@ func Test_1_ServeHTTP(t *testing.T) {
 	}
 
 }
+
+// -------------------------------------------------------------------------------------------------
+// const dbMap1 = true
+
+func DumpMatchItRan(x MatchItRankType) (rv string) {
+	com := ""
+	rv = "{ "
+	if (x & ReMatch) != 0 {
+		rv += com + " ReMatch"
+		com = "|"
+	}
+	if (x & HeaderMatch) != 0 {
+		rv += com + " HeaderMatch"
+		com = "|"
+	}
+	if (x & QueryMatch) != 0 {
+		rv += com + " QueryMatch"
+		com = "|"
+	}
+	if (x & TLSMatch) != 0 {
+		rv += com + " TLSMatch"
+		com = "|"
+	}
+	if (x & PortMatch) != 0 {
+		rv += com + " PortMatch"
+		com = "|"
+	}
+	if (x & HostMatch) != 0 {
+		rv += com + " HostMatch"
+		com = "|"
+	}
+	if (x & PortHostMatch) != 0 {
+		rv += com + " PortHostMatch"
+		com = "|"
+	}
+	if (x & ProtocalMatch) != 0 {
+		rv += com + " ProtocalMatch"
+		com = "|"
+	}
+	if (x & User0Match) != 0 {
+		rv += com + " User0Match"
+		com = "|"
+	}
+	if (x & User1Match) != 0 {
+		rv += com + " User1Match"
+		com = "|"
+	}
+	if (x & User2Match) != 0 {
+		rv += com + " User2Match"
+		com = "|"
+	}
+	if (x & User3Match) != 0 {
+		rv += com + " User3Match"
+		com = "|"
+	}
+	if (x & User4Match) != 0 {
+		rv += com + " User4Match"
+		com = "|"
+	}
+	rv += " }"
+	return
+}
+
+func (r *MuxRouter) DumpRouteData(msg string) {
+	if true {
+		fmt.Printf("\nDumpRouteData: %s\n", msg)
+		for i, v := range r.routeData {
+			if v.MatchItRank != 0 {
+				fmt.Printf("[%03d] ARoute[%d] %s %s 0x%04x MatchItRank=%s\n", i, v.NFxNo, v.Method, v.Route, v.MatchItRank, DumpMatchItRan(v.MatchItRank))
+			} else {
+				fmt.Printf("[%03d] ARoute[%d] %s %s\n", i, v.NFxNo, v.Method, v.Route)
+			}
+		}
+		fmt.Printf("\n\n")
+	}
+}
+
+func dumpReArray(tmpRe []Re) (rv string) {
+	rv = "{{ "
+	com := ""
+	for i, v := range tmpRe {
+		rv += com + fmt.Sprintf(" at[%d] Pos=%d Re=%s Name=%s ", i, v.Pos, v.Re, v.Name)
+		com = ","
+	}
+	rv += " }}"
+	return
+}
+
+// func (r *MuxRouter) HostPort_AllRoutes(hp ...string) *MuxRouter {

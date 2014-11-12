@@ -1,9 +1,18 @@
+package gogomux
+
+//
+// Go Go Mux - Go Fast Mux / Router for HTTP requests
+//
+// (C) Philip Schlump, 2013-2014.
+// Version: 0.4.3
+// BuildNo: 804
+//
+// /Users/corwin/Projects/gogo2
+//
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
 // Some of the code in this is derived from Gorilla Mux and HttpRouter.
-
-package gogomux
 
 import (
 	"fmt"
@@ -12,7 +21,7 @@ import (
 	"sort"
 	"time"
 
-	"./context" // "github.com/gorilla/context"
+	// "./context" // "github.com/gorilla/context"
 	"./debug"
 )
 
@@ -23,7 +32,6 @@ func NewRouter() *MuxRouter {
 		MaxSlash:        1,
 		gen_hdlr:        1,
 		nLookupResults:  1,
-		KeepContext:     false,
 		AllHostPortFlag: false,
 	}
 	fn, ln := LineFile(1)
@@ -34,13 +42,13 @@ func NewRouter() *MuxRouter {
 	r.AllParam.search = make(map[string]int)
 	r.NotFound = http.NotFound // Set to default, http.NotFound handler.
 	r.www = &r.www0
-	//	r.AllHostPort = make(map[string]bool)
 
 	return r
 }
 
 // MuxRouter registers routes to be matched and dispatches a handler.
 //
+//// xyzzy - change this comment to be accurate
 // It implements the http.Handler interface, so it can be registered to serve
 // requests:
 //
@@ -60,7 +68,6 @@ func NewRouter() *MuxRouter {
 type MuxRouter struct {
 	NotFoundHandler http.Handler // Configurable Handler to be used when no route matches.
 	routes          []*ARoute    // Routes to be matched, from longes to shotest
-	KeepContext     bool         // If true, do not clear the request context after handling the request
 	UseRedirect     bool         // PJS
 
 	AllHostPortFlag bool
@@ -82,10 +89,9 @@ type MuxRouter struct {
 	UsePat   string                 // The used T::T pattern for matching - at URL time.
 	cRoute   string                 //
 
-	// Maximum number of slashes found in any route
-	MaxSlash int
+	MaxSlash int // Maximum number of slashes found in any route
 
-	widgetBefore   []GoGoWidgetSet
+	widgetBefore   []GoGoWidgetSet // Support for middleware (GoGoWidget)
 	widgetAfter    []GoGoWidgetSet
 	widgetHashNewM []GoGoWidgetSet
 
@@ -120,15 +126,13 @@ type MuxRouter struct {
 
 // Handle is a function that can be registered to a route to handle HTTP
 // requests. Like http.HandlerFunc, but has a third parameter for the values of
-// wildcards (variables).
+// parameters.  Parameters can be from the URL or from other sources.
 type Handle func(w http.ResponseWriter, req *http.Request, ps Params)
 
 // I will use this type (synonomous with Handle) as HandleFunc is a unique
 // string and Handle is just a word.
 // type HandleFunc func(w http.ResponseWriter, req *http.Request, ps Params)
 type HandleFunc Handle
-
-// type HandleFunc func(w http.ResponseWriter, req *http.Request)
 
 // Verify the NewRouter (GoGoMux) works with the http.Handler interface.  This will produce a syntax
 // error if there is a mismatch in interface.
@@ -171,19 +175,19 @@ type RouteData struct {
 type MatchItRankType uint32
 
 const (
-	ReMatch       MatchItRankType = 1 << iota
-	HeaderMatch                   = 1 << iota
-	QueryMatch                    = 1 << iota
-	TLSMatch                      = 1 << iota
-	PortMatch                     = 1 << iota
-	HostMatch                     = 1 << iota
-	PortHostMatch                 = 1 << iota
-	ProtocalMatch                 = 1 << iota
-	User0Match                    = 1 << iota
-	User1Match                    = 1 << iota
-	User2Match                    = 1 << iota
-	User3Match                    = 1 << iota
-	User4Match                    = 1 << iota
+	ReMatch       MatchItRankType = 1 << iota // Not used anymore
+	HeaderMatch                   = 1 << iota // Has a match on the HTTP Headers
+	QueryMatch                    = 1 << iota // Has a match on the query - stuff after question mark
+	TLSMatch                      = 1 << iota // Matches "https" v.s. "http"
+	PortMatch                     = 1 << iota // Has a match on the Port
+	HostMatch                     = 1 << iota // Has a match on the Host
+	PortHostMatch                 = 1 << iota // Matches both Host and Port
+	ProtocalMatch                 = 1 << iota // Has a match on prococal, http/1.0, http/1.1, http/2.0
+	User0Match                    = 1 << iota // Reserved for User Functions
+	User1Match                    = 1 << iota // Reserved for User Functions
+	User2Match                    = 1 << iota // Reserved for User Functions
+	User3Match                    = 1 << iota // Reserved for User Functions
+	User4Match                    = 1 << iota // Reserved for User Functions
 )
 
 // -------------------------------------------------------------------------------------------------
@@ -229,7 +233,13 @@ This will help to keep the performance to a near constant.
 //
 const nKeyChar = 7
 
-// xyzzy - comment
+// This causes an early exit in processing.  For example if you have both routes and files
+// being served, but all the routes are /api and the files are /js, /css, /image - then
+// if the first word "js" failes to match any routes (all starting with "api"), then
+// the only match possible is something like /*filename - this will be use if possible.
+// If you do not have a catch-all like /*filename then no match will be returned.
+// Timing wise this is much qucker than just doing the entire search.
+// Note: The _test fucntions assume that this is true.
 const optionEarlyExit = true
 
 // -------------------------------------------------------------------------------------------------
@@ -274,22 +284,24 @@ func (r *MuxRouter) NewRoute() *ARoute {
 	return route
 }
 
-// Handle registers a new route with a matcher for the URL path.
-// xyzzy - Unknown - don't understand this yet
-func (r *MuxRouter) Handle(path string, handler http.Handler) *ARoute {
-	return r.NewRoute().Handle(path, handler)
-}
+// I am still working on this pair of functions!
 
-// Handle registers a new route with a matcher for the URL path.
-// xyzzy - Unknown - don't understand this yet
-func (r *ARoute) Handle(path string, handlerFunc http.Handler) *ARoute {
-	/*
-		Not Implemented Yet - still working on this -
-		r.Path = path		// Path pattern
-		r.HandleFunc = handlerFunc
-	*/
-	return r
-}
+//// Handle registers a new route with a matcher for the URL path.
+//// xyzzy - Unknown - don't understand this yet
+//func (r *MuxRouter) Handle(path string, handler http.Handler) *ARoute {
+//	return r.NewRoute().Handle(path, handler)
+//}
+//
+//// Handle registers a new route with a matcher for the URL path.
+//// xyzzy - Unknown - don't understand this yet
+//func (r *ARoute) Handle(path string, handlerFunc http.Handler) *ARoute {
+//	/*
+//		Not Implemented Yet - still working on this -
+//		r.Path = path		// Path pattern
+//		r.HandleFunc = handlerFunc
+//	*/
+//	return r
+//}
 
 // HandleFunc registers a new route with a matcher for the URL path.
 func (r *MuxRouter) HandleFunc(path string, f HandleFunc) *ARoute {
@@ -304,14 +316,14 @@ func (r *ARoute) HandleFunc(path string, f HandleFunc) *ARoute {
 }
 
 // Headers registers a new route with a matcher for request header values.
-// xyzzy
 func (r *MuxRouter) Headers(pairs ...string) *ARoute {
+	// fmt.Printf("Setting Header - top\n")
 	return r.NewRoute().Headers(pairs...)
 }
 
 // Headers registers a new route with a matcher for request header values.
-// xyzzy
 func (r *ARoute) Headers(pairs ...string) *ARoute {
+	// fmt.Printf("Setting Header - bot\n")
 	r.DHeaders = append(r.DHeaders, pairs...)
 	return r
 }
@@ -319,6 +331,9 @@ func (r *ARoute) Headers(pairs ...string) *ARoute {
 // Set/Append to list of valid host/ports for all routes by this router
 func (r *MuxRouter) HostPort_AllRoutes(hp ...string) *MuxRouter {
 	for _, v := range hp {
+		if hasReInString(v) {
+			fmt.Printf("Warning(20018): regular expressions are not supported in host/port.  This will be fixed in a week or two.\n")
+		}
 		r.AllHostPortFlag = true
 		r.AllHostPort[v] = hpn
 		hpn += 3
@@ -329,39 +344,39 @@ func (r *MuxRouter) HostPort_AllRoutes(hp ...string) *MuxRouter {
 var hpn = 5
 
 // Host registers a new route with a matcher for the URL host.
-// xyzzy - per route post check
 func (r *MuxRouter) Host(h string) *ARoute {
 	return r.NewRoute().Host(h)
 }
 
 // Host registers a new route with a matcher for the URL host.
-// xyzzy - per route post check
 func (r *ARoute) Host(h string) *ARoute {
+	if hasReInString(h) {
+		fmt.Printf("Warning(20018): regular expressions are not supported in host/port.  This will be fixed in a week or two.\n")
+	}
 	r.DHost = h
 	return r
 }
 
 // Host:Port registers a new route with a matcher for the URL host and port.
-// xyzzy
 func (r *MuxRouter) HostPort(h string) *ARoute {
 	return r.NewRoute().HostPort(h)
 }
 
 // Host:Port registers a new route with a matcher for the URL host and port.
-// xyzzy
 func (r *ARoute) HostPort(h string) *ARoute {
+	if hasReInString(h) {
+		fmt.Printf("Warning(20018): regular expressions are not supported in host/port.  This will be fixed in a week or two.\n")
+	}
 	r.DHostPort = h
 	return r
 }
 
 // Name sets the name for this route.  This is not use for matching the route.
-// xyzzy
 func (r *MuxRouter) Name(n string) *ARoute {
 	return r.NewRoute().Name(n)
 }
 
 // Name sets the name for this route.  This is not use for matching the route.
-// xyzzy
 func (r *ARoute) Name(n string) *ARoute {
 	r.DName = n
 	return r
@@ -388,8 +403,11 @@ func (r *MuxRouter) Port(p string) *ARoute {
 
 // Port sets the port or this route.   This is a string like "80" or "8000"
 // xyzzy
+// xyzzy - ports are numbers ? validate!
 func (r *ARoute) Port(p string) *ARoute {
-	// xyzzy - ports are numbers ? validate!
+	if hasReInString(p) {
+		fmt.Printf("Warning(20018): regular expressions are not supported in host/port.  This will be fixed in a week or two.\n")
+	}
 	r.DPort = p
 	return r
 }
@@ -466,6 +484,11 @@ func (r *ARoute) Queries(q ...string) *ARoute {
 	} else {
 		r.DQueries = append(r.DQueries, q...)
 	}
+	for _, p := range q {
+		if hasReInString(p) {
+			fmt.Printf("Warning(20018): regular expressions are not supported in host/port.  This will be fixed in a week or two.\n")
+		}
+	}
 	return r
 }
 
@@ -491,7 +514,6 @@ type RouteMatch struct {
 	Handler http.Handler
 	Vars    map[string]string
 }
-*/
 
 type contextKey int
 
@@ -523,6 +545,7 @@ func setVars(r *http.Request, val interface{}) {
 func setCurrentRoute(r *http.Request, val interface{}) {
 	context.Set(r, routeKey, val)
 }
+*/
 
 // ----------------------------------------------------------------------------
 // Helpers
@@ -548,7 +571,8 @@ func cleanPath(p string) string {
 }
 */
 
-// ----------------------------------------------------------------------------
+// Create default values for matching.   By default a non-specified route is
+// assued to be a GET request with any scheme (both https and http)
 func (r *MuxRouter) setDefaults() {
 	for i := 0; i < len(r.routes); i++ {
 		if r.routes[i].DId == 0 {
@@ -563,7 +587,7 @@ func (r *MuxRouter) setDefaults() {
 	}
 }
 
-// ----------------------------------------------------------------------------
+// See if both https and http - null case.
 func isHttpHttps(s []string) (ignore bool, http bool, https bool) {
 	ignore = false
 	http = false
@@ -582,7 +606,8 @@ func isHttpHttps(s []string) (ignore bool, http bool, https bool) {
 	return
 }
 
-// ----------------------------------------------------------------------------
+// Convert from the supplied routing information in r.routes to the sortable
+// routing information.
 func (r *MuxRouter) buildRoutingTable() {
 	for i, v := range r.routes {
 		for _, w := range r.routes[i].DMethods {
@@ -598,10 +623,6 @@ func (r *MuxRouter) buildRoutingTable() {
 					}
 				}
 
-				//if v.DHostPort != ""  && v.DPort != "" {
-				//	r.setHostPort(k)
-				//} else {
-
 				if v.DHostPort != "" {
 					r.setHostPort(k)
 				}
@@ -612,6 +633,7 @@ func (r *MuxRouter) buildRoutingTable() {
 					r.setPort(k)
 				}
 				if len(v.DHeaders) > 0 {
+					// fmt.Printf("Setting DHeaders\n")
 					x, err := mapFromPairs(v.DHeaders...)
 					if err != nil {
 						fmt.Printf("Error(20012): %s FileName: %s LineNo: %d\n", err, v.FileName, v.LineNo)
@@ -639,20 +661,27 @@ func (r *MuxRouter) buildRoutingTable() {
 }
 
 // ----------------------------------------------------------------------------
+// Perform the match of a header.
 func matchHeaderMatch(req *http.Request, r *MuxRouter, route_i int) bool {
 	return matchMap(r.routes[route_i].HeaderMatchMap, req.Header, true)
 }
+
+// Setup to match headers.
 func (r *MuxRouter) setHeaderMatch(k int) {
-	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{Data: -1, MatchFunc: matchHeaderMatch})
+	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{MatchFunc: matchHeaderMatch})
 	r.routeData[k].MatchItRank |= HeaderMatch
 }
 
 // ----------------------------------------------------------------------------
+// Perform a match on the Query portion of the URL (Requires that the query
+// be parsed by the GoGoWidget.
 func matchQueryMatch(req *http.Request, r *MuxRouter, route_i int) bool {
 	return matchQueryMap(r.routes[route_i].QueryMatchMap, r.AllParam)
 }
+
+// Setup to match on query.
 func (r *MuxRouter) setQueryMatch(k int) {
-	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{Data: -1, MatchFunc: matchQueryMatch})
+	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{MatchFunc: matchQueryMatch})
 	r.routeData[k].MatchItRank |= QueryMatch
 }
 
@@ -664,11 +693,11 @@ func matchNoTlsFunc(req *http.Request, r *MuxRouter, route_i int) bool {
 	return req.TLS == nil
 }
 func (r *MuxRouter) setHTTPS_Only(k int) {
-	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{Data: -1, MatchFunc: matchTlsFunc})
+	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{MatchFunc: matchTlsFunc})
 	r.routeData[k].MatchItRank |= TLSMatch
 }
 func (r *MuxRouter) setHTTP_Only(k int) {
-	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{Data: -1, MatchFunc: matchNoTlsFunc})
+	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{MatchFunc: matchNoTlsFunc})
 	r.routeData[k].MatchItRank |= TLSMatch
 }
 
@@ -684,7 +713,7 @@ func matchPortFunc(req *http.Request, r *MuxRouter, route_i int) bool {
 	}
 }
 func (r *MuxRouter) setPort(k int) {
-	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{Data: -1, MatchFunc: matchPortFunc})
+	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{MatchFunc: matchPortFunc})
 	r.routeData[k].MatchItRank |= PortMatch
 }
 
@@ -699,7 +728,7 @@ func matchHostFunc(req *http.Request, r *MuxRouter, route_i int) bool {
 	}
 }
 func (r *MuxRouter) setHost(k int) {
-	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{Data: -1, MatchFunc: matchHostFunc})
+	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{MatchFunc: matchHostFunc})
 	r.routeData[k].MatchItRank |= HostMatch
 }
 
@@ -709,7 +738,7 @@ func matchHostPortFunc(req *http.Request, r *MuxRouter, route_i int) bool {
 	return r.routes[route_i].DHostPort == req.Host
 }
 func (r *MuxRouter) setHostPort(k int) {
-	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{Data: -1, MatchFunc: matchHostPortFunc}) // route_i
+	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{MatchFunc: matchHostPortFunc}) // route_i
 	r.routeData[k].MatchItRank |= PortHostMatch
 }
 
@@ -720,7 +749,7 @@ func matchProtocalFunc(req *http.Request, r *MuxRouter, route_i int) bool {
 }
 func (r *MuxRouter) setProtocal(k int) {
 	///*db*/ fmt.Printf(":42:setProtocal called\n")
-	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{Data: -1, MatchFunc: matchProtocalFunc}) // route_i
+	r.routeData[k].MatchIt = append(r.routeData[k].MatchIt, Match{MatchFunc: matchProtocalFunc}) // route_i
 	r.routeData[k].MatchItRank |= ProtocalMatch
 }
 
@@ -809,7 +838,6 @@ const (
 type MatchFunc func(req *http.Request, r *MuxRouter, route_i int) bool
 
 type Match struct {
-	Data      int
 	MatchFunc MatchFunc
 }
 
@@ -863,12 +891,12 @@ type Collision2 struct {
 func (r *MuxRouter) addRoute(Method string, Route string, hdlr int, fx HandleFunc, pos int, fn string, ln int) int {
 	if Route[0] != '/' {
 		fmt.Printf("Error(20002): Path should begin with '/', passed %s, File:%s LinLineNo:%d\n", Route, fn, ln)
-		if oneSlash {
-			fmt.Printf("%s\n", debug.LF(1))
-			fmt.Printf("%s\n", debug.LF(2))
-			fmt.Printf("%s\n", debug.LF(3))
-			fmt.Printf("%s\n", debug.LF(4))
-		}
+		//if oneSlash {
+		//	fmt.Printf("%s\n", debug.LF(1))
+		//	fmt.Printf("%s\n", debug.LF(2))
+		//	fmt.Printf("%s\n", debug.LF(3))
+		//	fmt.Printf("%s\n", debug.LF(4))
+		//}
 		return -1
 	}
 	if !validMethod[Method] {
@@ -886,82 +914,6 @@ func (r *MuxRouter) addRoute(Method string, Route string, hdlr int, fx HandleFun
 	})
 
 	return k
-}
-
-// -------------------------------------------------------------------------------------------------
-// const dbMap1 = true
-
-func DumpMatchItRan(x MatchItRankType) (rv string) {
-	com := ""
-	rv = "{ "
-	if (x & ReMatch) != 0 {
-		rv += com + " ReMatch"
-		com = "|"
-	}
-	if (x & HeaderMatch) != 0 {
-		rv += com + " HeaderMatch"
-		com = "|"
-	}
-	if (x & QueryMatch) != 0 {
-		rv += com + " QueryMatch"
-		com = "|"
-	}
-	if (x & TLSMatch) != 0 {
-		rv += com + " TLSMatch"
-		com = "|"
-	}
-	if (x & PortMatch) != 0 {
-		rv += com + " PortMatch"
-		com = "|"
-	}
-	if (x & HostMatch) != 0 {
-		rv += com + " HostMatch"
-		com = "|"
-	}
-	if (x & PortHostMatch) != 0 {
-		rv += com + " PortHostMatch"
-		com = "|"
-	}
-	if (x & ProtocalMatch) != 0 {
-		rv += com + " ProtocalMatch"
-		com = "|"
-	}
-	if (x & User0Match) != 0 {
-		rv += com + " User0Match"
-		com = "|"
-	}
-	if (x & User1Match) != 0 {
-		rv += com + " User1Match"
-		com = "|"
-	}
-	if (x & User2Match) != 0 {
-		rv += com + " User2Match"
-		com = "|"
-	}
-	if (x & User3Match) != 0 {
-		rv += com + " User3Match"
-		com = "|"
-	}
-	if (x & User4Match) != 0 {
-		rv += com + " User4Match"
-		com = "|"
-	}
-	rv += " }"
-	return
-}
-
-func (r *MuxRouter) DumpRouteData(msg string) {
-	if true {
-		fmt.Printf("\nDumpRouteData: %s\n", msg)
-		for i, v := range r.routeData {
-			if v.MatchItRank != 0 {
-				fmt.Printf("[%03d] ARoute[%d] %s %s 0x%04x MatchItRank=%s\n", i, v.NFxNo, v.Method, v.Route, v.MatchItRank, DumpMatchItRan(v.MatchItRank))
-			} else {
-				fmt.Printf("[%03d] ARoute[%d] %s %s\n", i, v.NFxNo, v.Method, v.Route)
-			}
-		}
-		fmt.Printf("\n\n")
-	}
 }
 
 func (r *MuxRouter) CompileRoutes() {
@@ -1154,6 +1106,12 @@ func numChar(s string, c rune) (rv int) {
 	return
 }
 
+func hasReInString(s string) bool {
+	a := numChar(s, '{')
+	b := numChar(s, '}')
+	return a > 0 && b > 0
+}
+
 // Iterate over the set of routes and calculate the number of '/' in each route.
 func (r *MuxRouter) calcNumSlash() {
 	for i, v := range r.routeData {
@@ -1237,9 +1195,9 @@ func (ms *multiSorter) Less(i, j int) bool {
 // addPat2().
 func (r *MuxRouter) addPatT__T(Route string, hdlr int, fx HandleFunc, FileName string, LineNo int) (ss string, names []string) {
 	i, k := 0, 0
-	if oneSlash {
-		/*db*/ fmt.Printf("Route:%s, NSl=%d r.Slash=%s\n", Route, r.NSl, debug.SVar(r.Slash[:r.NSl+1]))
-	}
+	//if oneSlash {
+	//	/*db*/ fmt.Printf("Route:%s, NSl=%d r.Slash=%s\n", Route, r.NSl, debug.SVar(r.Slash[:r.NSl+1]))
+	//}
 	pp := ""
 	r.SplitOnSlash3(1, Route, false)
 	if Route == "/" {
@@ -1656,9 +1614,9 @@ s0:
 s1:
 	i++
 	if i >= ln {
-		if oneSlash {
-			fmt.Printf("s1: goto s10, Url=%s i=%d %s\n", Url, i, debug.LF())
-		}
+		//if oneSlash {
+		//	fmt.Printf("s1: goto s10, Url=%s i=%d %s\n", Url, i, debug.LF())
+		//}
 		goto s10
 	}
 	// if Url[i-1] == '/' && (Url[i] == '.' || Url[i] == '/') {
@@ -1759,9 +1717,9 @@ s10:
 		r.Slash[NSl] = ln
 		r.NSl = NSl
 	} else if i == 1 {
-		if oneSlash {
-			fmt.Printf("Special Case, Url=->%s<- %s\n", Url, debug.LF())
-		}
+		//if oneSlash {
+		//	fmt.Printf("Special Case, Url=->%s<- %s\n", Url, debug.LF())
+		//}
 		r.Hash[0] = h
 		r.Slash[1] = ln
 		r.NSl = 1
@@ -2185,6 +2143,7 @@ func LastIndexOfChar(s string, ch uint8) int {
 	return -1
 }
 
+/*
 // From Gorilla-Mux
 // uniqueVars returns an error if two slices contain duplicated strings.
 func uniqueVars(s1, s2 []string) error {
@@ -2197,6 +2156,7 @@ func uniqueVars(s1, s2 []string) error {
 	}
 	return nil
 }
+*/
 
 // From Gorilla-Mux
 // mapFromPairs converts variadic string parameters to a string map.
@@ -2213,6 +2173,7 @@ func mapFromPairs(pairs ...string) (map[string]string, error) {
 	return m, nil
 }
 
+/*
 // From Gorilla-Mux
 // matchInArray returns true if the given string value is in the array.
 func matchInArray(arr []string, value string) bool {
@@ -2223,6 +2184,7 @@ func matchInArray(arr []string, value string) bool {
 	}
 	return false
 }
+*/
 
 // From Gorilla-Mux
 // matchMap returns true if the given key/value pairs exist in a given map.
@@ -2274,4 +2236,31 @@ func IsMapStringBoolEmpty(v map[string]bool) bool {
 	return true
 }
 
-const oneSlash = false
+func dumpCType(n colType) (rv string) {
+	rv = "("
+	com := ""
+	if (n & IsWord) != 0 {
+		rv += com + "IsWord"
+		com = "|"
+	}
+	if (n & MultiUrl) != 0 {
+		rv += com + "MultiUrl"
+		com = "|"
+	}
+	if (n & SingleUrl) != 0 {
+		rv += com + "SingleUrl"
+		com = "|"
+	}
+	//if (n & BadUrl) != 0 {
+	//	rv += com + "BadUrl"
+	//	com = "|"
+	//}
+	if (n & Dummy) != 0 {
+		rv += com + "Dummy"
+		com = "|"
+	}
+	rv += ")"
+	return
+}
+
+// const oneSlash = false

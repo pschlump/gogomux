@@ -5,13 +5,12 @@ package gogomux
 //
 // (C) Philip Schlump, 2013-2014.
 // Version: 0.4.3
-// BuildNo: 803
+// BuildNo: 804
 //
 // /Users/corwin/Projects/go-lib/gogomux
 //
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -57,7 +56,8 @@ type Params struct {
 	search_ready bool
 }
 
-func (ps Params) CreateSearch() {
+func (ps *Params) CreateSearch() {
+	// fmt.Printf("CreateSearch - called\n")
 	if ps.search_ready {
 		return
 	}
@@ -65,10 +65,11 @@ func (ps Params) CreateSearch() {
 	for i, v := range ps.Data {
 		ps.search[v.Name] = i
 	}
+	// fmt.Printf("CreateSearch - set to true\n")
 	ps.search_ready = true
 }
 
-func (ps Params) DumpParam() (rv string) {
+func (ps *Params) DumpParam() (rv string) {
 	var Data2 []Param
 	Data2 = ps.Data[0:ps.NParam]
 	rv = debug.SVar(Data2)
@@ -77,11 +78,13 @@ func (ps Params) DumpParam() (rv string) {
 
 // ByName returns the value of the first Param which key matches the given name.
 // If no matching Param is found, an empty string is returned.
-func (ps Params) ByName(name string) (rv string) {
+func (ps *Params) ByName(name string) (rv string) {
 	rv = ""
 	// xyzzy100 Change this to use a map[string]int - build maps on setup.
 	// fmt.Printf("Looking For: %s, ps = %s\n", name, debug.SVarI(ps.Data[0:ps.NParam]))
+	// fmt.Printf("ByName ------------------------\n")
 	if ps.search_ready {
+		// fmt.Printf("Is True ------------------------\n")
 		if i, ok := ps.search[name]; ok {
 			rv = ps.Data[i].Value
 		}
@@ -97,7 +100,7 @@ func (ps Params) ByName(name string) (rv string) {
 	return
 }
 
-func (ps Params) HasName(name string) (rv bool) {
+func (ps *Params) HasName(name string) (rv bool) {
 	rv = false
 	if ps.search_ready {
 		if _, ok := ps.search[name]; ok {
@@ -114,7 +117,7 @@ func (ps Params) HasName(name string) (rv bool) {
 	return
 }
 
-func (ps Params) PositionOf(name string) (rv int) {
+func (ps *Params) PositionOf(name string) (rv int) {
 	rv = -1
 	for i := 0; i < ps.NParam; i++ {
 		if ps.Data[i].Name == name {
@@ -125,7 +128,7 @@ func (ps Params) PositionOf(name string) (rv int) {
 	return
 }
 
-func (ps Params) ByPostion(pos int) (name string, val string, outRange bool) {
+func (ps *Params) ByPostion(pos int) (name string, val string, outRange bool) {
 	// xyzzy101 Change this to use a map[string]int - build maps on setup.
 	if pos >= 0 && pos < ps.NParam {
 		return ps.Data[pos].Name, ps.Data[pos].Value, false
@@ -229,24 +232,9 @@ var fo *os.File
 
 const ApacheFormatPattern = "%s %v %s %s %s %v %d %v\n"
 
-var benchmar = false
+const benchmar = false
 
-var shortMonthNames = []string{
-	"---",
-	"Jan",
-	"Feb",
-	"Mar",
-	"Apr",
-	"May",
-	"Jun",
-	"Jul",
-	"Aug",
-	"Sep",
-	"Oct",
-	"Nov",
-	"Dec",
-}
-
+/*
 func itoaPos(n int, buffer *bytes.Buffer, padLen int, pad uint8) {
 	i := 0
 	var s [10]uint8
@@ -266,6 +254,7 @@ func itoaPos(n int, buffer *bytes.Buffer, padLen int, pad uint8) {
 		buffer.WriteByte(s[j])
 	}
 }
+*/
 
 func ApacheLogingBefore(w *MyResponseWriter, req *http.Request, ps *Params) int {
 	if fo == nil {
@@ -293,18 +282,7 @@ func ApacheLogingAfter(w *MyResponseWriter, req *http.Request, ps *Params) int {
 	// Sadly enough - by not exposing the interals of the time.Time type - fixing this will require
 	// a major re-write of the entire time type.   That is oging to take some days to do.
 	var timeFormatted string
-	if false {
-		timeFormatted = finishTimeUTC.Format("02/Jan/2006 03:04:05") // 450+ us to do a time format and 1 alloc
-	} else {
-		y, m, d := finishTimeUTC.Date() // These funcs (Year,Month,Day,Clock) take 245 us just to extract info
-		H, M, S := finishTimeUTC.Clock()
-		if false {
-			// This silly thing takes 1245 us to convert/format a string.
-			timeFormatted = fmt.Sprintf("%02d/%3s/%04d %02d:%02d:%02d", d, shortMonthNames[m], y, H, M, S)
-		} else {
-			timeFormatted = ""
-		}
-	}
+	timeFormatted = finishTimeUTC.Format("02/Jan/2006 03:04:05") // 450+ us to do a time format and 1 alloc
 
 	if !benchmar {
 		fmt.Fprintf(fo, ApacheFormatPattern, ip, timeFormatted, req.Method, req.RequestURI, req.Proto, w.status,

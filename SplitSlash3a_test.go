@@ -5,7 +5,7 @@ package gogomux
 //
 // (C) Philip Schlump, 2013-2014.
 // Version: 0.4.3
-// BuildNo: 803
+// BuildNo: 804
 //
 // /Users/corwin/Projects/go-lib/gogomux
 //
