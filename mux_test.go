@@ -686,9 +686,9 @@ func createFx(ii int) HandleFunc {
 
 func init() {
 	var err error
-	fo, err = os.OpenFile("log.log", os.O_RDWR|os.O_APPEND, 0660)
+	ApacheLogFile, err = os.OpenFile("log.log", os.O_RDWR|os.O_APPEND, 0660)
 	if err != nil {
-		fo, err = os.Create("log.log")
+		ApacheLogFile, err = os.Create("log.log")
 		if err != nil {
 			panic(err)
 		}

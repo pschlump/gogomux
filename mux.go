@@ -758,9 +758,9 @@ func (r *MuxRouter) setProtocal(k int) {
 var disableOutput bool = false
 
 type MyResponseWriter struct {
-	startTime     time.Time
-	status        int
-	responseBytes int64
+	StartTime     time.Time
+	Status        int
+	ResponseBytes int64
 	w             http.ResponseWriter
 }
 
@@ -772,16 +772,16 @@ func (m *MyResponseWriter) Header() http.Header {
 func (m *MyResponseWriter) Write(p []byte) (written int, err error) {
 	if disableOutput {
 		written = len(string(p))
-		m.responseBytes += int64(written)
+		m.ResponseBytes += int64(written)
 		return written, nil
 	}
 	written, err = m.w.Write(p)
-	m.responseBytes += int64(written)
+	m.ResponseBytes += int64(written)
 	return written, err
 }
 
 func (m *MyResponseWriter) WriteHeader(p int) {
-	m.status = p
+	m.Status = p
 	m.w.WriteHeader(p)
 }
 
@@ -1735,9 +1735,9 @@ s11:
 func (r *MuxRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var m int
 	m = 0
-	r.www0.startTime = time.Now() // 25ns
-	r.www0.status = http.StatusOK // 1ns
-	r.www0.responseBytes = 0      // 1ns
+	r.www0.StartTime = time.Now() // 25ns
+	r.www0.Status = http.StatusOK // 1ns
+	r.www0.ResponseBytes = 0      // 1ns
 	r.www0.w = w                  // 1ns
 
 	if r.PanicHandler != nil { // 2ns

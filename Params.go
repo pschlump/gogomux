@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"./debug"
@@ -34,6 +35,7 @@ const (
 	FromInject            = iota
 	FromHeader            = iota
 	FromOther             = iota
+	FromDefault           = iota
 )
 
 // Param is a single URL parameter, consisting of a key and a value.
@@ -56,6 +58,30 @@ type Params struct {
 	search_ready bool
 }
 
+func FromTypeToString(ff FromType) string {
+	switch ff {
+	case FromURL:
+		return "FromURL"
+	case FromParams:
+		return "FromParams"
+	case FromCookie:
+		return "FromCookie"
+	case FromBody:
+		return "FromBody"
+	case FromBodyJson:
+		return "FromBodyJson"
+	case FromInject:
+		return "FromInject"
+	case FromHeader:
+		return "FromHeader"
+	case FromOther:
+		return "FromOther"
+	case FromDefault:
+		return "FromDefault"
+	default:
+		return "Unknown-FromType"
+	}
+}
 func (ps *Params) CreateSearch() {
 	// fmt.Printf("CreateSearch - called\n")
 	if ps.search_ready {
@@ -100,6 +126,38 @@ func (ps *Params) ByName(name string) (rv string) {
 	return
 }
 
+func (ps *Params) GetByName(name string) (rv string, found bool) {
+	rv = ""
+	found = false
+	// xyzzy100 Change this to use a map[string]int - build maps on setup.
+	// fmt.Printf("Looking For: %s, ps = %s\n", name, debug.SVarI(ps.Data[0:ps.NParam]))
+	// fmt.Printf("ByName ------------------------\n")
+	if ps.search_ready {
+		// fmt.Printf("Is True ------------------------\n")
+		if i, ok := ps.search[name]; ok {
+			rv = ps.Data[i].Value
+			found = true
+		}
+		return
+	}
+
+	for i := 0; i < ps.NParam; i++ {
+		if ps.Data[i].Name == name {
+			rv = ps.Data[i].Value
+			found = true
+			return
+		}
+	}
+	return
+}
+
+func (ps *Params) ByNameDflt(name string, dflt string) (rv string) {
+	if ps.HasName(name) {
+		return ps.ByName(name)
+	}
+	return dflt
+}
+
 func (ps *Params) HasName(name string) (rv bool) {
 	rv = false
 	if ps.search_ready {
@@ -115,6 +173,13 @@ func (ps *Params) HasName(name string) (rv bool) {
 		}
 	}
 	return
+}
+
+func (ps *Params) SetValue(name string, val string) {
+	x := ps.PositionOf(name)
+	if x >= 0 {
+		ps.Data[x].Value = val
+	}
 }
 
 func (ps *Params) PositionOf(name string) (rv int) {
@@ -228,7 +293,7 @@ func ParseCookiesAsParams(w *MyResponseWriter, req *http.Request, ps *Params) in
 }
 
 // -------------------------------------------------------------------------------------------------
-var fo *os.File
+var ApacheLogFile *os.File
 
 const ApacheFormatPattern = "%s %v %s %s %s %v %d %v\n"
 
@@ -255,17 +320,53 @@ func itoaPos(n int, buffer *bytes.Buffer, padLen int, pad uint8) {
 	}
 }
 */
+var mutexCurTime = &sync.Mutex{}
+var timeFormatted string
+
+func SetCurTime(s string) {
+	mutexCurTime.Lock()
+	timeFormatted = s
+	mutexCurTime.Unlock()
+}
+
+func GetCurTime() (s string) {
+	mutexCurTime.Lock()
+	s = timeFormatted
+	mutexCurTime.Unlock()
+	return
+}
+
+func init() {
+	// Once a sec update of time formated string
+	onceASec := time.NewTicker(1 * time.Second)
+	quit := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-onceASec.C:
+				// do stuff
+				finishTime := time.Now()
+				curTimeUTC := finishTime.UTC()
+				SetCurTime(curTimeUTC.Format("02/Jan/2006 03:04:05"))
+				// fmt.Printf("cur-time: %s\n", GetCurTime())
+			case <-quit:
+				onceASec.Stop()
+				return
+			}
+		}
+	}()
+}
 
 func ApacheLogingBefore(w *MyResponseWriter, req *http.Request, ps *Params) int {
-	if fo == nil {
+	if ApacheLogFile == nil {
 		return 0
 	}
-	w.startTime = time.Now()
+	w.StartTime = time.Now()
 	return 0
 }
 
 func ApacheLogingAfter(w *MyResponseWriter, req *http.Request, ps *Params) int {
-	if fo == nil {
+	if ApacheLogFile == nil {
 		return 0
 	}
 	ip := req.RemoteAddr
@@ -274,20 +375,27 @@ func ApacheLogingAfter(w *MyResponseWriter, req *http.Request, ps *Params) int {
 	}
 
 	finishTime := time.Now()
-	finishTimeUTC := finishTime.UTC()
-	elapsedTime := finishTime.Sub(w.startTime)
+	elapsedTime := finishTime.Sub(w.StartTime)
 	// The next line is a real problem.  Taking 450us to convert a data is just ICKY!  I have a new
 	// version of Format that reduces this to about 300us.  What is needed is a real fast formatting
 	// tool for dates that reduces this to a reasonable 30us.
 	// Sadly enough - by not exposing the interals of the time.Time type - fixing this will require
 	// a major re-write of the entire time type.   That is oging to take some days to do.
 	var timeFormatted string
-	timeFormatted = finishTimeUTC.Format("02/Jan/2006 03:04:05") // 450+ us to do a time format and 1 alloc
 
-	if !benchmar {
-		fmt.Fprintf(fo, ApacheFormatPattern, ip, timeFormatted, req.Method, req.RequestURI, req.Proto, w.status,
-			w.responseBytes, elapsedTime.Seconds())
-	}
+	//
+	// OLD: finishTimeUTC := finishTime.UTC()
+	// OLD: timeFormatted = finishTimeUTC.Format("02/Jan/2006 03:04:05") // 450+ us to do a time format and 1 alloc
+	//
+	// This entire thing could be replaced with a goroutein that runs 1ce a second, and makes a
+	// variable with the date-time in it.  that would be one "Format" per second on a different
+	// thread.  Then just use a lock, unlock process to access the variable - simple enough.
+	//
+	timeFormatted = GetCurTime()
+
+	fmt.Fprintf(ApacheLogFile, ApacheFormatPattern, ip, timeFormatted, req.Method, req.RequestURI, req.Proto, w.Status,
+		w.ResponseBytes, elapsedTime.Seconds())
+
 	return 0
 }
 
@@ -341,4 +449,19 @@ func MethodParam(w *MyResponseWriter, req *http.Request, ps *Params) int {
 	return 0
 }
 
+/*
+	HTTP/1.1 401 Unauthorized
+	{
+		"status": "Error"
+		, "msg": "No access token provided."
+		, "code": "10002"
+		, "details": "bla bla bla"
+	}
+req.Header.Add("If-None-Match", `W/"wyzzy"`)
+https://developer.github.com/guides/traversing-with-pagination/
+
+req.Header.Add("Link", `W/"wyzzy"`)
+Link: <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=2>; rel="next",
+  <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=34>; rel="last"
+*/
 /* vim: set noai ts=4 sw=4: */
