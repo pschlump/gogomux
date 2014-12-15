@@ -10,7 +10,10 @@ package gogomux
 // /Users/corwin/Projects/go-lib/gogomux
 //
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 var testRuns_SplitOnSlash3 = []struct {
 	param string
@@ -18,73 +21,98 @@ var testRuns_SplitOnSlash3 = []struct {
 	hash  string
 	nsl   int
 }{
-	{"", `["/"]`, ``, -1},
-	{"/", `["/"]`, ``, -1},
-	{"a", `["a"]`, ``, -1},
-	{"aa", `["aa"]`, ``, -1},
-	{"/a", `["/","a"]`, ``, -1},
-	{"/aa", `["/","aa"]`, ``, -1},
-	{"//a", `["/","a"]`, ``, -1},
-	{"///a", `["/","a"]`, ``, -1},
-	{"///a/", `["/","a"]`, ``, -1},
-	{"///a//", `["/","a"]`, ``, -1},
-	{"///a///", `["/","a"]`, ``, -1},
-	{"aa", `["aa"]`, ``, -1},
-	{"/aa", `["/","aa"]`, ``, -1},
-	{"//aa", `["/","aa"]`, ``, -1},
-	{"///aa", `["/","aa"]`, ``, -1},
-	{"///aa/", `["/","aa"]`, ``, -1},
-	{"///aa//", `["/","aa"]`, ``, -1},
-	{"./aa", `["aa"]`, ``, -1},
-	{"././aa", `["aa"]`, ``, -1},
-	{"./././aa", `["aa"]`, ``, -1},
-	{"/./aa", `["/","aa"]`, ``, -1},
-	{"/././aa", `["/","aa"]`, ``, -1},
-	{"/./././aa", `["/","aa"]`, ``, -1},
-	{"/aa/bb", `["/","aa","bb"]`, ``, -1},
-	{"/aa//bb/cc/dd", `["/","aa","bb","cc","dd"]`, ``, -1},
-	{"/aa/bb///cc/dd", `["/","aa","bb","cc","dd"]`, ``, -1},
-	{"/aa/bb/./cc//.//dd", `["/","aa","bb","cc","dd"]`, ``, -1},
-	{"/aa/bb.html", `["/","aa","bb.html"]`, ``, -1},
-	{"/aa//bb/cc/dd.php", `["/","aa","bb","cc","dd.php"]`, ``, -1},
-	{"/aa//bb/cc/dd.php/", `["/","aa","bb","cc","dd.php"]`, ``, -1},
-	{"/aa//bb/cc/dd.php//", `["/","aa","bb","cc","dd.php"]`, ``, -1},
-	{"/aa//bb/cc/dd.php///", `["/","aa","bb","cc","dd.php"]`, ``, -1},
-	{"/aa/bb///cc.php/dd", `["/","aa","bb","cc.php","dd"]`, ``, -1},
-	{"/aa/bb/./...cc//.//dd", `["/","aa","bb","...cc","dd"]`, ``, -1},
-	{"/aa/bb/./.cc//.//dd", `["/","aa","bb",".cc","dd"]`, ``, -1},
-	{"/../a", `["/","a"]`, ``, -1},
-	{"/../../a", `["/","a"]`, ``, -1},
-	{"/../../../a", `["/","a"]`, ``, -1},
-	{"/../../../../a", `["/","a"]`, ``, -1},
-	{"../a", `["/","a"]`, ``, -1},
-	{"../../a", `["/","a"]`, ``, -1},
-	{"../../../a", `["/","a"]`, ``, -1},
-	{"../../../../a", `["/","a"]`, ``, -1},
-	{"../../a.html", `["/","a.html"]`, ``, -1},
-	{"../../../a.html", `["/","a.html"]`, ``, -1},
-	{"../../../../a.html", `["/","a.html"]`, ``, -1},
-	{"../bb/cc/../../a.html", `["/","a.html"]`, ``, -1},
-	{"../bb/cc/dd/../../a.html", `["/","bb","a.html"]`, ``, -1},
-	{"./bb/cc/dd/../../a.html", `["bb","a.html"]`, ``, -1},
-	{"bb/cc/dd/../../ee/a.html", `["bb","ee","a.html"]`, ``, -1},
-	{"bb/cc/dd/../../ee/../a.html", `["bb","a.html"]`, ``, -1},
-	{"bb/cc/dd/../../ee/../a.html/", `["bb","a.html"]`, ``, -1},
-	{"bb/cc/dd/../../ee/../a.html//", `["bb","a.html"]`, ``, -1},
-	{"/./../bb/cc/dd/../../ee/../a.html//", `["/","bb","a.html"]`, ``, -1},
-	{"/./../.../cc/dd/../../ee/../a.html//", `["/","...","a.html"]`, ``, -1},
-	{"/redis/planb/", `["/","redis","planb"]`, ``, -1},
-	{"", `["/","redis","planb"]`, ``, -1},
+	{"", `[]`, ``, 1},
+	{"/", `[]`, ``, 1},
+	{"a", `["a"]`, ``, 1},
+	{"aa", `["aa"]`, ``, 1},
+	{"/a", `["a"]`, ``, 1},
+	{"/aa", `["aa"]`, ``, 1},
+	{"//a", `["a"]`, ``, 1},
+	{"///a", `["a"]`, ``, 1},
+	{"///a/", `["a"]`, ``, 1},
+	{"///a//", `["a"]`, ``, 1},
+	{"///a///", `["a"]`, ``, 1},
+	{"aa", `["aa"]`, ``, 1},
+	{"/aa", `["aa"]`, ``, 1},
+	{"//aa", `["aa"]`, ``, 1},
+	{"///aa", `["aa"]`, ``, 1},
+	{"///aa/", `["aa"]`, ``, 1},
+	{"///aa//", `["aa"]`, ``, 1},
+	{"./aa", `["aa"]`, ``, 1},
+	{"././aa", `["aa"]`, ``, 1},
+	{"./././aa", `["aa"]`, ``, 1},
+	{"/./aa", `["aa"]`, ``, 1},
+	{"/././aa", `["aa"]`, ``, 1},
+	{"/./././aa", `["aa"]`, ``, 1},
+	{"/aa/bb", `["aa","bb"]`, ``, 2},
+	{"/aa//bb/cc/dd", `["aa","bb","cc","dd"]`, ``, 4},
+	{"/aa/bb///cc/dd", `["aa","bb","cc","dd"]`, ``, 4},
+	{"/aa/bb/./cc//.//dd", `["aa","bb","cc","dd"]`, ``, 4},
+	{"/aa/bb.html", `["aa","bb.html"]`, ``, 2},
+	{"/aa//bb/cc/dd.php", `["aa","bb","cc","dd.php"]`, ``, 4},
+	{"/aa//bb/cc/dd.php/", `["aa","bb","cc","dd.php"]`, ``, 4},
+	{"/aa//bb/cc/dd.php//", `["aa","bb","cc","dd.php"]`, ``, 4},
+	{"/aa//bb/cc/dd.php///", `["aa","bb","cc","dd.php"]`, ``, 4},
+	{"/aa/bb///cc.php/dd", `["aa","bb","cc.php","dd"]`, ``, 4},
+	{"/aa/bb/./...cc//.//dd", `["aa","bb","...cc","dd"]`, ``, 4},
+	{"/aa/bb/./.cc//.//dd", `["aa","bb",".cc","dd"]`, ``, 4},
+	{"/../a", `["a"]`, ``, 1},
+	{"/../../a", `["a"]`, ``, 1},
+	{"/../../../a", `["a"]`, ``, 1},
+	{"/../../../../a", `["a"]`, ``, 1},
+	{"../a", `["a"]`, ``, 1},
+	{"../../a", `["a"]`, ``, 1},
+	{"../../../a", `["a"]`, ``, 1},
+	{"../../../../a", `["a"]`, ``, 1},
+	{"../../a.html", `["a.html"]`, ``, 1},
+	{"../../../a.html", `["a.html"]`, ``, 1},
+	{"../../../../a.html", `["a.html"]`, ``, 1},
+	{"../bb/cc/../../a.html", `["a.html"]`, ``, 1},
+	{"../bb/cc/dd/../../a.html", `["bb","a.html"]`, ``, 2},
+	{"./bb/cc/dd/../../a.html", `["bb","a.html"]`, ``, 2},
+	{"bb/cc/dd/../../ee/a.html", `["bb","ee","a.html"]`, ``, 3},
+	{"bb/cc/dd/../../ee/../a.html", `["bb","a.html"]`, ``, 2},
+	{"bb/cc/dd/../../ee/../a.html/", `["bb","a.html"]`, ``, 2},
+	{"bb/cc/dd/../../ee/../a.html//", `["bb","a.html"]`, ``, 2},
+	{"/./../bb/cc/dd/../../ee/../a.html//", `["bb","a.html"]`, ``, 2},
+	{"/./../.../cc/dd/../../ee/../a.html//", `["...","a.html"]`, ``, 2},
+	{"/redis/planb/", `["redis","planb"]`, ``, 2},
 }
 
 func TestSplitOnSlash3(t *testing.T) {
 
 	for k, test := range testRuns_SplitOnSlash3 {
 		htx.SplitOnSlash3(0, test.param, false)
-		if false {
+		s := arrFrom(htx.Slash[:], htx.NSl, htx.CurUrl, htx.Hash[:])
+		// r.Hash[NSl-1] = h
+		// r.Slash[NSl] = ln
+		// r.NSl = NSl
+		// fmt.Printf("s=%s\n", s)
+		if s != test.slash {
 			t.Errorf("Test %d - Url(%v) = ", k, test.param)
 		}
+		if htx.NSl != test.nsl {
+			t.Errorf("Test %d - Url(%v) NSl = %d, expected %d ", k, test.param, htx.NSl, test.nsl)
+		}
 	}
+}
+
+func arrFrom(Slash []int, NSl int, url string, Hash []int) string {
+	s := "["
+	com := ""
+	// fmt.Printf("NSl = %d\n", NSl)
+	// fmt.Printf("url ->%s<- Hash=%s Slash=%s NSl=%d\n", url, debug.SVar(Hash[0:NSl]), debug.SVar(Slash[0:NSl+1]), NSl)
+	for i := 0; i < NSl; i++ {
+		if Slash[i]+1 > Slash[i+1] {
+			s += com + "?"
+			com = ","
+		} else if Slash[i]+1 < len(url) && Slash[i+1]-1 < len(url) {
+			s += com + fmt.Sprintf("%q", url[Slash[i]+1:Slash[i+1]])
+			com = ","
+		}
+	}
+	s += "]"
+	return s
 }
 
 /*

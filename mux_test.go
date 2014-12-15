@@ -677,8 +677,8 @@ func rptParams2(w http.ResponseWriter, r *http.Request, ps Params) {
 }
 
 func createFx(ii int) HandleFunc {
-	var t = ii
 	return func(w http.ResponseWriter, r *http.Request, ps Params) {
+		var t = ii
 		arrived = t
 		g_route_i = ps.route_i
 	}
@@ -1074,6 +1074,216 @@ func Test_1_ServeHTTP(t *testing.T) {
 		t.Errorf("Test: Expected to have clean pattern\n")
 	}
 
+}
+
+const x_test = true
+
+var ServeHTTP_Tests2 = []struct {
+	RunTest       bool
+	Method        string
+	HTTPS         string
+	Host          string
+	Url           string
+	Expect        int
+	ShouldBeFound bool
+	RawQuery      string
+	Rp            string
+	CookieName    string
+	CookieValue   string
+	Proto         string
+	Headers       string // Headers       map[string][]string
+	Protocal      string
+}{
+	/*  00 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/",
+		Expect:        5001,
+		ShouldBeFound: true,
+		RawQuery:      "",
+	},
+	/*  01 */ {
+		RunTest:       true,
+		Method:        "POST",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/",
+		Expect:        5002,
+		ShouldBeFound: true,
+		RawQuery:      "",
+	},
+	/*  02 */ {
+		RunTest:       true,
+		Method:        "PUT",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/",
+		Expect:        -1,
+		ShouldBeFound: false,
+		RawQuery:      "",
+	},
+	/*  03 */ {
+		RunTest:       true,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/",
+		Expect:        5001,
+		ShouldBeFound: true,
+		RawQuery:      "abc=def&id=22",
+	},
+	/*  04 */ {
+		RunTest:       x_test,
+		Method:        "GET",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/5003",
+		Expect:        5003,
+		ShouldBeFound: true,
+		RawQuery:      "",
+	},
+	/*  05 */ {
+		RunTest:       x_test,
+		Method:        "POST",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/5004",
+		Expect:        5004,
+		ShouldBeFound: true,
+		RawQuery:      "",
+	},
+	/*  06 */ {
+		RunTest:       x_test,
+		Method:        "PUT",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/5003",
+		Expect:        -1,
+		ShouldBeFound: false,
+		RawQuery:      "",
+	},
+	/*  07 */ {
+		RunTest:       x_test,
+		Method:        "PUT",
+		HTTPS:         "http",
+		Host:          "localhost:8090",
+		Url:           "/5004",
+		Expect:        -1,
+		ShouldBeFound: false,
+		RawQuery:      "",
+	},
+}
+
+func Test_2_ServeHTTP(t *testing.T) {
+	// fmt.Printf("\nTest_2_ServeHTTP ------------------------------------------------------------------------------------------------------------------\n")
+	var ht2 *MuxRouter
+	ht2 = NewRouter()
+	r := ht2
+
+	aaa := createFx(5001)
+	bbb := createFx(5002)
+
+	ht2.HandleFunc("/", aaa).Methods("GET", "DELETE")
+	ht2.HandleFunc("/", bbb).Methods("POST")
+	if x_test {
+		ht2.HandleFunc("/5003", createFx(5003)).Methods("GET")
+		ht2.HandleFunc("/5004", createFx(5004)).Methods("POST")
+	}
+
+	ht2.setDefaults()
+	ht2.buildRoutingTable()
+	ht2.CompileRoutes()
+
+	var req http.Request
+	// var w http.ResponseWriter
+	var url url.URL
+	var tls tls.ConnectionState
+
+	disableOutput = true
+
+	w := new(mockResponseWriter)
+
+	// router.ServeHTTP(w, req)
+
+	r.NotFound = func(w http.ResponseWriter, req *http.Request) {
+		arrived = -1
+	}
+	req.URL = &url
+
+	// Test closures
+	{
+		var ps Params
+		ps.route_i = 0
+		arrived = -2
+		aaa(w, &req, ps)
+		if arrived != 5001 {
+			t.Errorf("Test[000] closure did not work\n")
+		}
+		arrived = -2
+		ps.route_i = 1
+		bbb(w, &req, ps)
+		if arrived != 5002 {
+			t.Errorf("Test[001] closure did not work\n")
+		}
+	}
+
+	rr := dumpCType(MultiUrl | SingleUrl | Dummy | IsWord)
+	if rr != "(IsWord|MultiUrl|SingleUrl|Dummy)" {
+		t.Errorf("Test dumpCType failed %s\n", rr)
+	}
+
+	for i, v := range ServeHTTP_Tests2 {
+		if v.RunTest {
+			req.URL.Path = v.Url
+			req.URL.RawQuery = v.RawQuery
+			req.Method = v.Method
+			req.Host = v.Host
+			req.TLS = nil
+			req.RemoteAddr = "[::1]:53248"
+			// req.RequestURI = v.HTTPS + "://" + v.Host + v.Url + "?" + v.RawQuery
+			if v.RawQuery != "" {
+				req.RequestURI = v.Url + "?" + v.RawQuery
+			} else {
+				req.RequestURI = v.Url
+			}
+			req.Proto = "HTTP/1.1"
+			if v.Proto != "" {
+				req.Proto = v.Proto
+			}
+			req.Header = make(http.Header)
+			if v.Headers != "" {
+				err := json.Unmarshal([]byte(v.Headers), &req.Header)
+				if err != nil {
+					fmt.Printf("Error(20032): %v, %s, Headers ->%s<_\n", err, debug.LF(), v.Headers)
+				}
+			}
+			if v.HTTPS == "https" {
+				req.TLS = &tls
+			}
+			if v.CookieName != "" {
+				c := http.Cookie{Name: v.CookieName, Value: v.CookieValue}
+				req.AddCookie(&c)
+			}
+			arrived = 0
+			// ---------------------------------------------------------------------------------------------------
+			r.ServeHTTP(w, &req)
+			// ---------------------------------------------------------------------------------------------------
+			if arrived != v.Expect {
+				t.Errorf("Test[%d][%s %s %s %s]: Loop Expected to have handler called. Got:%d\n",
+					i, v.Method, v.HTTPS, v.Host, v.Url, arrived)
+			} else if v.Rp != "" {
+				fmt.Printf("%s\n", rpTest)
+			}
+		}
+	}
+
+	Method := "GET"
+	m := MethodToCode(Method, 0)
+	// fmt.Printf("m=%d\n", m)
+	Route := "/"
+	r.SplitOnSlash3(m, Route, false)
 }
 
 // -------------------------------------------------------------------------------------------------

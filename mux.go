@@ -1281,7 +1281,7 @@ func (r *MuxRouter) FixBadUrl(Url string) (rv string, fixed bool) {
 
 func (r *MuxRouter) addHash2Map(Method string, Route string, cleanRoute string, hdlr int, fx HandleFunc, names []string, AddToM []Match, ns int, NFxNo int, FileName string, LineNo int) {
 	//if dbMatch2 {
-	//	fmt.Printf("addHash2Map: len(AddToM) = %d %s\n", len(AddToM), debug.LF())
+	//	fmt.Printf("\naddHash2Map: len(AddToM) = %d %s\n", len(AddToM), debug.LF())
 	//}
 	var i int
 	var ss int
@@ -1291,7 +1291,7 @@ func (r *MuxRouter) addHash2Map(Method string, Route string, cleanRoute string, 
 	reNames := make([]string, 0, MaxSlashInUrl)
 	pp = ""
 	//if dbHash2 || dbMatch2 {
-	//	fmt.Printf("\nTOP(addHash2Map): %s %s (%s) => %d, %s\n", Method, Route, cleanRoute, hdlr, debug.LF())
+	//	fmt.Printf("TOP(addHash2Map): %s %s (%s) => %d, %s\n", Method, Route, cleanRoute, hdlr, debug.LF())
 	//}
 	// m := ((int(Method[0]) + (int(Method[1]) << 1)) + AddToM) ^ (ns << 2)
 	m := MethodToCode(Method, 0)
@@ -1315,6 +1315,10 @@ func (r *MuxRouter) addHash2Map(Method string, Route string, cleanRoute string, 
 		//	fmt.Printf("i=%d ->%c<-, ->%s<-", i, Route[r.Slash[i]+1], Route[r.Slash[i]+1:r.Slash[i+1]])
 		//}
 		if r.Slash[i]+1 >= len(Route) {
+			//if dbHash2 {
+			//	fmt.Printf("At (Added to code at this point) %s\n", debug.LF())
+			//}
+			ss = ss ^ r.Hash[i]
 		} else if Route[r.Slash[i]+1] == ':' {
 			ss += 153
 			pp += ":"
@@ -1361,7 +1365,8 @@ func (r *MuxRouter) addHash2Map(Method string, Route string, cleanRoute string, 
 	}
 	ss = ((ss & bitMask) ^ ((ss >> nBits) & bitMask) ^ ((ss >> (nBits * 2)) & bitMask))
 	//if dbHash2 || dbMatch2 {
-	// fmt.Printf("ss=%-5d m=%4d/%s Url=%s, %s %d\n", ss, m, Method, Route, FileName, LineNo)
+	//	fmt.Printf("After, ss=%-5d m=%4d/%s Url=%s, %s %d, %s\n", ss, m, Method, Route, FileName, LineNo, debug.LF())
+	//	fmt.Printf("************Error has occured, if ss=0000, ss=%d, %s\n", ss, debug.LF())
 	//}
 	// -----------------------------------------------------------------------------------------------------------------
 	// xyzzy - if AddToM - then we have RE via extra functions
@@ -1378,8 +1383,10 @@ func (r *MuxRouter) addHash2Map(Method string, Route string, cleanRoute string, 
 		//		fmt.Printf("****** Have a AddToM/MatchIt re ******* = len(AddToM)=%d\n", len(AddToM))
 	}
 	if r.Hash2Test[ss] == 0 {
-		// fmt.Printf("At %s\n", debug.LF())
+		//if dbHash2 {
+		// fmt.Printf("At (no collision) %s\n", debug.LF())
 		// fmt.Printf("Adding to empty locaiton in table, r.Hash2Test[ss]==0\n")
+		//}
 		r.Hash2Test[ss] = r.nLookupResults
 		if haveRealRe {
 			///*db*/ fmt.Printf("At %s -- creating ReSet\n", debug.LF())
@@ -1395,8 +1402,11 @@ func (r *MuxRouter) addHash2Map(Method string, Route string, cleanRoute string, 
 		r.nLookupResults++
 		// Hash Collision ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	} else { // Have a collision on our hands.
-		c := r.Hash2Test[ss]
+		//if dbHash2 {
+		// fmt.Printf("At (collision) %s\n", debug.LF())
 		// fmt.Printf("At %s -- Collision for %s\n", debug.LF(), Route)
+		//}
+		c := r.Hash2Test[ss]
 		if optionEarlyExit && r.LookupResults[c].cType == IsWord { // No biggie - just a IsWord marker.
 			if haveRealRe {
 				///*db*/ fmt.Printf("At %s\n", debug.LF())
@@ -1599,7 +1609,15 @@ func (r *MuxRouter) SplitOnSlash3(m int, Url string, isUrl bool) {
 	var ln, NSl, h, wLen, i int
 	var p, eem bool
 	eem = true
+	pp := true
+	// fmt.Printf("\nAt top: ->%s<- %s\n", Url, debug.LF())
+	if len(Url) == 0 {
+		Url = "/"
+	} else if Url[0] != '/' {
+		Url = "/" + Url
+	}
 s0:
+	// fmt.Printf("At s0: ->%s<- %s\n", Url, debug.LF())
 	r.CurUrl = Url
 	ln = len(Url)
 	NSl = 0
@@ -1608,10 +1626,12 @@ s0:
 	i = 0
 	r.Hash[NSl] = 0
 	r.Slash[NSl] = 0
-	r.Slash[1] = 1
+	r.Slash[1] = ln
 	NSl++
 	p = true
+
 s1:
+	// fmt.Printf("At s1: i=%d %s\n", i, debug.LF())
 	i++
 	if i >= ln {
 		//if oneSlash {
@@ -1621,9 +1641,12 @@ s1:
 	}
 	// if Url[i-1] == '/' && (Url[i] == '.' || Url[i] == '/') {
 	if p && (Url[i] == '.' || Url[i] == '/') {
-		Url, fixed = r.FixBadUrl(r.CurUrl)
-		if fixed {
-			goto s0
+		if pp {
+			pp = false
+			Url, fixed = r.FixBadUrl(r.CurUrl)
+			if fixed {
+				goto s0
+			}
 		}
 	}
 	// fmt.Printf("s0: i=%d url ->%s<- wLen=%d\n", i, Url[i:], wLen)
@@ -1638,6 +1661,7 @@ s1:
 		r.Hash[NSl-1] = h
 		r.Slash[NSl] = i
 		NSl++
+		r.Slash[NSl] = ln
 		if optionEarlyExit {
 			if eem && isUrl {
 				eem = false
@@ -1664,15 +1688,20 @@ s1:
 	goto s1
 
 s2:
+	// fmt.Printf("At s2: i=%d %s\n", i, debug.LF())
 	i++
 	if i >= ln {
 		goto s10
 	}
 s2a:
+	// fmt.Printf("At s2a: i=%d %s\n", i, debug.LF())
 	if p && (Url[i] == '.' || Url[i] == '/') {
-		Url, fixed = r.FixBadUrl(r.CurUrl)
-		if fixed {
-			goto s0
+		if pp {
+			pp = false
+			Url, fixed = r.FixBadUrl(r.CurUrl)
+			if fixed {
+				goto s0
+			}
 		}
 	}
 	// fmt.Printf("s2a: i=%d url ->%s<- wLen=%d\n", i, Url[i:], wLen)
@@ -1684,6 +1713,7 @@ s2a:
 		r.Hash[NSl-1] = h
 		r.Slash[NSl] = i
 		NSl++
+		r.Slash[NSl] = ln
 		if optionEarlyExit {
 			if eem && isUrl {
 				eem = false
@@ -1707,6 +1737,7 @@ s2a:
 	goto s2
 
 s10:
+	// fmt.Printf("At s10: i=%d %s\n", i, debug.LF())
 	// fmt.Printf("s10: wLen=%d\n", wLen)
 	if wLen > 0 {
 		h += (h << 3)
@@ -1728,6 +1759,7 @@ s10:
 	//	fmt.Printf("Hash=%s Slash=%s NSl=%d\n", debug.SVar(r.Hash[0:r.NSl]), debug.SVar(r.Slash[0:r.NSl+1]), r.NSl)
 	//}
 s11:
+	// fmt.Printf("At s11: i=%d pp=%v %s\n", i, pp, debug.LF())
 	return
 }
 
@@ -1766,6 +1798,9 @@ func (r *MuxRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	r.SplitOnSlash3(m, path, true)
 	found, ln, item := r.LookupUrlViaHash2(w, req, &m)
+	// if dbLookup4 {
+	// fmt.Printf("found=%v, %s\n", found, debug.LF())
+	// }
 	if found {
 		// fmt.Printf("Was Found!  Getting args now\n")
 		r.GetArgs3(path, item.ArgPattern, item.ArgNames, ln)
@@ -1854,43 +1889,53 @@ func (r *MuxRouter) LookupUrlViaHash2(w http.ResponseWriter, req *http.Request, 
 	//if dbLookupUrlMap2 {
 	//	fmt.Printf("LookupUrlViaHash2: %s, r.NSl=%d, len(nMatch[%d].PatList)=%d\n", debug.LF(), r.NSl, r.NSl, len(nMatch[r.NSl].PatList))
 	//	fmt.Printf("LookupUrlViaHash2: nMatch[%d]=%s\n", r.NSl, debug.SVarI(nMatch[r.NSl]))
-	//	// fmt.Printf("nMatch=%s\n", debug.SVarI(nMatch))
+	//	fmt.Printf("nMatch=%s\n", debug.SVarI(nMatch))
 	//}
 	k2 := len(nMatch[r.NSl].PatList)
+	//if dbHash2 {
+	// fmt.Printf("k2 = %d, r.NSl=%d, %s\n", k2, r.NSl, debug.LF())
+	//}
 	for jj := 0; jj < k2; jj++ {
 		ss = 0
 		xPat := nMatch[r.NSl].PatList[jj].Pat
 		//if dbHash2 {
-		//	fmt.Printf("Top of Pat Match Loop, jj=%d pat=%s\n", jj, xPat)
+		// fmt.Printf("Top of Pat Match Loop, jj=%d pat=%s, %s\n", jj, xPat, debug.LF())
 		//}
 		r.UsePat = xPat
 		for i := 0; i < r.NSl; i++ {
 			if xPat[i] == ':' {
 				ss += 153
 				//if dbHash2 {
-				//	fmt.Printf(" ss=%d after : 153\n", ss)
+				// fmt.Printf(" ss=%d after : 153, %s\n", ss, debug.LF())
 				//}
 			} else if xPat[i] == '*' {
 				ss += 51
 				//if dbHash2 {
-				//	fmt.Printf(" ss=%d after * 51\n", ss)
+				// fmt.Printf(" ss=%d after * 51, %s\n", ss, debug.LF())
 				//}
 				break
 			} else if xPat[i] == '{' {
 				ss += 211
 				//if dbHash2 {
-				//	fmt.Printf(" ss=%d after { 211\n", ss)
+				// fmt.Printf(" ss=%d after { 211, %s\n", ss, debug.LF())
 				//}
 			} else {
 				ss = ss ^ r.Hash[i]
 				//if dbHash2 {
-				//	fmt.Printf(" ss=%d after adding %d\n", ss, r.Hash[i])
+				// fmt.Printf(" ss=%d after adding %d, %s\n", ss, r.Hash[i], debug.LF())
 				//}
 			}
 		}
 		ss = ((ss & bitMask) ^ ((ss >> nBits) & bitMask) ^ ((ss >> (nBits * 2)) & bitMask))
-		//if dbLookupUrlMap2 {
+		//if dbLookup4 {
 		// fmt.Printf("ss=%s, %s\n", debug.SVar(ss), debug.LF())
+		//}
+		//if dbLookup4 {
+		// for x := range r.Hash2Test {
+		// 	if r.Hash2Test[x] > 0 {
+		// 		fmt.Printf("  **** r.Hash2Test[%d]=%d\n", x, r.Hash2Test[x])
+		// 	}
+		// }
 		//}
 		if r.Hash2Test[ss] > 0 {
 			//if dbHash2 {
