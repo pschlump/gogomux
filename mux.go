@@ -14,6 +14,8 @@ package gogomux
 
 // Some of the code in this is derived from Gorilla Mux and HttpRouter.
 
+// See Also: https://github.com/labstack/echo
+
 import (
 	"fmt"
 	"net/http"
@@ -38,10 +40,10 @@ func NewRouter() *MuxRouter {
 	r.LookupResults = append(r.LookupResults, Collision2{cType: Dummy, FileName: fn, LineNo: ln})
 	r.AllParam.Data = r.allParam[:]
 	r.AllParam.parent = r
-	r.Hash2Test = make([]int, bitMask+1, bitMask+1)
 	r.AllParam.search = make(map[string]int)
+	r.Hash2Test = make([]int, bitMask+1, bitMask+1)
 	r.NotFound = http.NotFound // Set to default, http.NotFound handler.
-	r.www = &r.www0
+	/// r.www = &r.www0
 
 	return r
 }
@@ -120,8 +122,8 @@ type MuxRouter struct {
 	LookupResults  []Collision2
 	nLookupResults int
 
-	www0 MyResponseWriter
-	www  *MyResponseWriter
+	//www0 MyResponseWriter
+	//www  *MyResponseWriter
 }
 
 // Handle is a function that can be registered to a route to handle HTTP
@@ -271,6 +273,11 @@ uint32_t jenkins_one_at_a_time_hash(char *key, size_t len)
 // ----------------------------------------------------------------------------
 // Route factories
 // ----------------------------------------------------------------------------
+
+// Just return the data for the routes that are built
+func (r *MuxRouter) ListRoutes() []*ARoute {
+	return r.routes
+}
 
 // NewRoute registers an empty route.
 func (r *MuxRouter) NewRoute() *ARoute {
@@ -500,6 +507,14 @@ func (r *MuxRouter) Path(tpl string) *ARoute {
 // Path registers a new route with a matcher for the URL path.
 func (r *ARoute) Path(p string) *ARoute {
 	r.DPath = p
+	return r
+}
+
+// ----------------------------------------------------------------------------
+// Manpiulate LineNo/FileName in ARoute data.
+// ----------------------------------------------------------------------------
+func (r *ARoute) AppendFileName(p string) *ARoute {
+	r.FileName += p
 	return r
 }
 
@@ -1767,10 +1782,25 @@ s11:
 func (r *MuxRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var m int
 	m = 0
-	r.www0.StartTime = time.Now() // 25ns
-	r.www0.Status = http.StatusOK // 1ns
-	r.www0.ResponseBytes = 0      // 1ns
-	r.www0.w = w                  // 1ns
+
+	//r.www0.StartTime = time.Now() // 25ns
+	//r.www0.Status = http.StatusOK // 1ns
+	//r.www0.ResponseBytes = 0      // 1ns
+	//r.www0.w = w                  // 1ns
+
+	var r_www *MyResponseWriter
+	r_www = &MyResponseWriter{}  // Horrid!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	r_www.StartTime = time.Now() // 25ns
+	r_www.Status = http.StatusOK // 1ns
+	r_www.ResponseBytes = 0      // 1ns
+	r_www.w = w                  // 1ns
+
+	// Sun Feb 22 12:51:24 MST 2015 -- New PJS
+	var allParam [MaxParams]Param // The parameters for the current operation
+	r.AllParam.Data = allParam[:]
+	r.AllParam.search = make(map[string]int)
+	// r.AllParam.parent = r
+	// Sun Feb 22 12:51:24 MST 2015 -- End New PJS
 
 	if r.PanicHandler != nil { // 2ns
 		defer r.recv(w, req)
@@ -1782,7 +1812,7 @@ func (r *MuxRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.AllParam.NParam = 0
 	if r.widgetBefore != nil {
 		for _, x := range r.widgetBefore {
-			m = x.fx(r.www, req, &r.AllParam)
+			m = x.fx(r_www, req, &r.AllParam)
 		}
 	}
 
@@ -1792,7 +1822,7 @@ func (r *MuxRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	if r.widgetHashNewM != nil {
 		for _, x := range r.widgetHashNewM {
-			m = x.fx(r.www, req, &r.AllParam)
+			m = x.fx(r_www, req, &r.AllParam)
 		}
 	}
 
@@ -1807,14 +1837,14 @@ func (r *MuxRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		// fmt.Printf("Was Found!  Calling Fx, params=%s\n", r.AllParam.DumpParam())
 		r.AllParam.route_i = item.route_i
 		// fmt.Printf("Found, parsing paras for route_i=%d\n", r.AllParam.route_i)
-		item.Fx(r.www, req, r.AllParam)
+		item.Fx(r_www, req, r.AllParam)
 	} else {
 		r.NotFound(w, req)
 	}
 
 	if r.widgetAfter != nil {
 		for _, x := range r.widgetAfter {
-			m = x.fx(r.www, req, &r.AllParam)
+			m = x.fx(r_www, req, &r.AllParam)
 		}
 	}
 
@@ -2161,13 +2191,38 @@ func (r *MuxRouter) CmpUrlToCleanRoute(UsePat string, CleanUrl string) (rv bool)
 			//	fmt.Printf("T: left=->%s<-\n", r.CurUrl[r.Slash[i]+1:r.Slash[i+1]])
 			//	fmt.Printf("T: rght=->%s<-\n", CleanUrl[k:k+l])
 			//}
-			if r.CurUrl[r.Slash[i]+1:r.Slash[i+1]] != CleanUrl[k:k+l] {
+			//fmt.Printf("\nX: l=%d\n", l)
+			//fmt.Printf("X: i=%d\n", i)
+			//fmt.Printf("X: len(r.Slash)=%d\n", len(r.Slash))
+			//fmt.Printf("X: len(r.CurUrl)=%d\n", len(r.CurUrl))
+			//fmt.Printf("X: r.Slash[i]= %d\n", r.Slash[i])
+			//fmt.Printf("X: r.Slash[i+1]= %d\n", r.Slash[i+1])
+			//fmt.Printf("X: k=%d, k+l=%d, len(CleanUrl)=%d\n", k, k+l, len(CleanUrl))
+			//fmt.Printf("X: CleanUrl=->%s<-\n", CleanUrl)
+			//fmt.Printf("X: r.CurUrl=->%s<-\n", r.CurUrl)
+			m := k + l
+			if m > len(CleanUrl) {
+				m = len(CleanUrl)
+			}
+			//fmt.Printf("X: m=%d\n", m)
+			if r.CurUrl[r.Slash[i]+1:r.Slash[i+1]] != CleanUrl[k:m] {
 				//if dbCmp {
 				//	fmt.Printf("match failed\n")
 				//}
 				rv = false
 				return
 			}
+			/*
+			   X: l=18
+			   X: i=2
+			   X: len(r.Slash)=21
+			   X: len(r.CurUrl)=29
+			   X: r.Slash[i]= 10
+			   X: r.Slash[i+1]= 29
+			   X: k=11, k+l=29, len(CleanUrl)=12
+			   X: CleanUrl=->/api/table/:<-
+			   X: r.CurUrl=->/api/table/user_valid_origins<-
+			*/
 			k += l + 1
 		}
 	}
@@ -2306,6 +2361,13 @@ func dumpCType(n colType) (rv string) {
 	}
 	rv += ")"
 	return
+}
+
+func ServeHTTP(fx func(w http.ResponseWriter, r *http.Request)) (rv func(res http.ResponseWriter, req *http.Request, ps Params)) {
+	return func(w http.ResponseWriter, r *http.Request, ps Params) {
+		// maybee set ps -> Gorilla:context?
+		fx(w, r)
+	}
 }
 
 // const oneSlash = false

@@ -82,6 +82,13 @@ func FromTypeToString(ff FromType) string {
 		return "Unknown-FromType"
 	}
 }
+
+func (ps *Params) MakeStringMap(mdata map[string]string) {
+	for _, v := range ps.Data {
+		mdata[v.Name] = v.Value
+	}
+}
+
 func (ps *Params) CreateSearch() {
 	// fmt.Printf("CreateSearch - called\n")
 	if ps.search_ready {
