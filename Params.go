@@ -109,6 +109,13 @@ func (ps *Params) DumpParam() (rv string) {
 	return
 }
 
+func (ps *Params) DumpParamDB() (rv string) {
+	var Data2 []Param
+	Data2 = ps.Data[0:ps.NParam]
+	rv = debug.SVarI(Data2)
+	return
+}
+
 // ByName returns the value of the first Param which key matches the given name.
 // If no matching Param is found, an empty string is returned.
 func (ps *Params) ByName(name string) (rv string) {
