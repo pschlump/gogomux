@@ -13,7 +13,7 @@ package gogomux
 import (
 	"fmt"
 
-	"./debug"
+	debug "github.com/pschlump/godebug"
 )
 
 // Table of valid methods,  If other http-methods are created or used they should be added to this list.

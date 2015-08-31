@@ -24,7 +24,8 @@ import (
 	"time"
 
 	// "./context" // "github.com/gorilla/context"
-	"./debug"
+
+	debug "github.com/pschlump/godebug"
 )
 
 // NewRouter returns a new router instance.

@@ -16,7 +16,8 @@ import (
 	"testing"
 
 	// "./context" // "github.com/gorilla/context"
-	"./debug"
+
+	debug "github.com/pschlump/godebug"
 )
 
 type routeTestNew struct {

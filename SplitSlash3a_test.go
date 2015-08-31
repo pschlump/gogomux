@@ -13,7 +13,7 @@ package gogomux
 import (
 	"testing"
 
-	"./debug"
+	debug "github.com/pschlump/godebug"
 )
 
 var testSplitSlash3_Data = []struct {

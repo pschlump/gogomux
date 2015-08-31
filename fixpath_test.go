@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"testing"
 
-	"./debug"
+	debug "github.com/pschlump/godebug"
 )
 
 var testRuns = []struct {

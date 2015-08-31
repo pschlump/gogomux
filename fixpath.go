@@ -1,6 +1,8 @@
 package gogomux
 
-import "./debug"
+import (
+	debug "github.com/pschlump/godebug"
+)
 
 //
 // Go Go Mux - Go Fast Mux / Router for HTTP requests

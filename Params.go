@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"./debug"
+	debug "github.com/pschlump/godebug"
 )
 
 type FromType int

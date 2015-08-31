@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"testing"
 
-	"./debug"
+	debug "github.com/pschlump/godebug"
 )
 
 func Test_CmpUrlToCleanRoute(t *testing.T) {
