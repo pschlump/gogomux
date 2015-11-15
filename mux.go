@@ -39,8 +39,8 @@ func NewRouter() *MuxRouter {
 	}
 	fn, ln := LineFile(1)
 	r.LookupResults = append(r.LookupResults, Collision2{cType: Dummy, FileName: fn, LineNo: ln})
-	r.AllParam.Data = r.allParam[:]
-	r.AllParam.parent = r
+	// r.AllParam.Data = r.allParam[:]	// Must be created on stack // PJS Sun Nov 15 13:02:42 MST 2015
+	// r.AllParam.parent = r // PJS Sun Nov 15 13:12:31 MST 2015
 	r.AllParam.search = make(map[string]int)
 	r.Hash2Test = make([]int, bitMask+1, bitMask+1)
 	r.NotFound = http.NotFound // Set to default, http.NotFound handler.
@@ -83,14 +83,14 @@ type MuxRouter struct {
 
 	// ------------------------------------------------------------------------------------------------------
 	// Info used during processing of a URL
-	CurUrl   string                 // The current URL being processed.
-	Hash     [MaxSlashInUrl]int     // The set of hash keys in the current operation.
-	Slash    [MaxSlashInUrl + 1]int // Array of locaitons for the '/' in the url.  For /abc/def, it would be [ 0, 4, 8 ]
-	NSl      int                    // Number of slashes in the URL for /abc/def it would be 2
-	allParam [MaxParams]Param       // The parameters for the current operation
-	AllParam Params                 // Slice that pints into allParam
-	UsePat   string                 // The used T::T pattern for matching - at URL time.
-	cRoute   string                 //
+	CurUrl string                 // The current URL being processed.
+	Hash   [MaxSlashInUrl]int     // The set of hash keys in the current operation.
+	Slash  [MaxSlashInUrl + 1]int // Array of locaitons for the '/' in the url.  For /abc/def, it would be [ 0, 4, 8 ]
+	NSl    int                    // Number of slashes in the URL for /abc/def it would be 2
+	// allParam [MaxParams]Param       // The parameters for the current operation // PJS Sun Nov 15 13:02:59 MST 2015
+	AllParam Params // Slice that pints into allParam
+	UsePat   string // The used T::T pattern for matching - at URL time.
+	cRoute   string //
 
 	MaxSlash int // Maximum number of slashes found in any route
 
@@ -209,7 +209,7 @@ a bunch of APIs and none of them had more than 9 slashes in any route.
 const nBits = 12
 const bitMask = 0xfff
 
-const MaxParams = 200
+// const MaxParams = 200 -- Moved to ./Params.go // PJS Sun Nov 15 13:16:04 MST 2015
 
 /*
 Hash Table Size Constants
@@ -1781,27 +1781,31 @@ s11:
 
 // -------------------------------------------------------------------------------------------------
 func (r *MuxRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	var m int
-	m = 0
+	m := 0
 
 	//r.www0.StartTime = time.Now() // 25ns
 	//r.www0.Status = http.StatusOK // 1ns
 	//r.www0.ResponseBytes = 0      // 1ns
 	//r.www0.w = w                  // 1ns
 
-	var r_www *MyResponseWriter
-	r_www = &MyResponseWriter{}  // Horrid!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	//var r_www *MyResponseWriter
+	// r_www = &MyResponseWriter{}  // Horrid!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! -- Malloc call 400ns
+	var rr_www MyResponseWriter  // PJS - Sun Nov 15 13:20:01 MST 2015
+	r_www := &rr_www             // just put on stack
 	r_www.StartTime = time.Now() // 25ns
 	r_www.Status = http.StatusOK // 1ns
 	r_www.ResponseBytes = 0      // 1ns
 	r_www.w = w                  // 1ns
 
 	// Sun Feb 22 12:51:24 MST 2015 -- New PJS
-	var allParam [MaxParams]Param // The parameters for the current operation
-	r.AllParam.Data = allParam[:]
-	r.AllParam.search = make(map[string]int)
+	// var allParam [MaxParams]Param // The parameters for the current operation
+	// r.AllParam.Data = allParam[:]
+	// r.AllParam.search = make(map[string]int) // Horrid!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	// r.AllParam.parent = r
 	// Sun Feb 22 12:51:24 MST 2015 -- End New PJS
+	// PJS Sun Nov 15 13:17:37 MST 2015
+	InitParams(&r.AllParam)
+	// end PJS Sun Nov 15 13:17:37 MST 2015
 
 	if r.PanicHandler != nil { // 2ns
 		defer r.recv(w, req)

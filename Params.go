@@ -3,11 +3,9 @@ package gogomux
 //
 // Go Go Mux - Go Fast Mux / Router for HTTP requests
 //
-// (C) Philip Schlump, 2013-2014.
-// Version: 0.4.3
-// BuildNo: 804
-//
-// /Users/corwin/Projects/go-lib/gogomux
+// (C) Philip Schlump, 2013-2015.
+// Version: 0.5.4
+// BuildNo: 810
 //
 
 import (
@@ -27,16 +25,19 @@ import (
 type FromType int
 
 const (
-	FromURL      FromType = iota
-	FromParams            = iota
-	FromCookie            = iota
-	FromBody              = iota
-	FromBodyJson          = iota
-	FromInject            = iota
-	FromHeader            = iota
-	FromOther             = iota
-	FromDefault           = iota
+	FromURL FromType = iota
+	FromParams
+	FromCookie
+	FromBody
+	FromBodyJson
+	FromInject
+	FromHeader
+	FromOther
+	FromDefault
+	FromAuth
 )
+
+const MaxParams = 200
 
 // Param is a single URL parameter, consisting of a key and a value.
 type Param struct {
@@ -50,12 +51,18 @@ type Param struct {
 // The slice is ordered, the first URL parameter is also the first slice value.
 // It is therefore safe to read values by the index.
 type Params struct {
-	NParam       int
-	Data         []Param
-	route_i      int // What matched
-	parent       *MuxRouter
-	search       map[string]int
-	search_ready bool
+	NParam       int              //
+	Data         []Param          // has to be assided to array
+	route_i      int              // What matched
+	search       map[string]int   // has to be allocated
+	search_ready bool             //
+	allParam     [MaxParams]Param // The parameters for the current operation
+	// parent       *MuxRouter     // // PJS Sun Nov 15 13:12:31 MST 2015
+}
+
+func InitParams(p *Params) {
+	p.Data = p.allParam[:]
+	p.search = make(map[string]int)
 }
 
 func FromTypeToString(ff FromType) string {
@@ -78,6 +85,8 @@ func FromTypeToString(ff FromType) string {
 		return "FromOther"
 	case FromDefault:
 		return "FromDefault"
+	case FromAuth:
+		return "FromAuth"
 	default:
 		return "Unknown-FromType"
 	}
