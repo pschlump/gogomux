@@ -1814,7 +1814,7 @@ func (r *MuxRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		r.CompileRoutes()
 	}
 
-	r.AllParam.NParam = 0
+	// r.AllParam.NParam = 0
 	if r.widgetBefore != nil {
 		for _, x := range r.widgetBefore {
 			m = x.fx(r_www, req, &r.AllParam)

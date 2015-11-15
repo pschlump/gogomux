@@ -63,6 +63,7 @@ type Params struct {
 func InitParams(p *Params) {
 	p.Data = p.allParam[:]
 	p.search = make(map[string]int)
+	p.NParam = 0
 }
 
 func FromTypeToString(ff FromType) string {
@@ -306,7 +307,75 @@ func ParseBodyAsParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
 }
 
 // -------------------------------------------------------------------------------------------------
+func ParseBodyAsParamsReg(www http.ResponseWriter, req *http.Request, ps *Params) int {
+
+	ct := req.Header.Get("Content-Type")
+	if req.Method == "POST" || req.Method == "PUT" || req.Method == "PATCH" || req.Method == "DELETE" {
+		if req.PostForm == nil {
+			if strings.HasPrefix(ct, "application/json") {
+				body, err2 := ioutil.ReadAll(req.Body)
+				if err2 != nil {
+					fmt.Printf("Error(20008): Malformed JSON body, RequestURI=%s err=%v\n", req.RequestURI, err2)
+				}
+				var jsonData map[string]interface{}
+				err := json.Unmarshal(body, &jsonData)
+				if err == nil {
+					for Name, v := range jsonData {
+						Value := ""
+						switch v.(type) {
+						case bool:
+							Value = fmt.Sprintf("%v", v)
+						case float64:
+							Value = fmt.Sprintf("%v", v)
+						case int64:
+							Value = fmt.Sprintf("%v", v)
+						case int32:
+							Value = fmt.Sprintf("%v", v)
+						case time.Time:
+							Value = fmt.Sprintf("%v", v)
+						case string:
+							Value = fmt.Sprintf("%v", v)
+						default:
+							Value = fmt.Sprintf("%s", debug.SVar(v))
+						}
+						AddValueToParams(Name, Value, 'b', FromBodyJson, ps)
+					}
+				}
+			} else {
+				err := req.ParseForm()
+				if err != nil {
+					fmt.Printf("Error(20010): Malformed body, RequestURI=%s err=%v\n", req.RequestURI, err)
+				} else {
+					for Name, v := range req.PostForm {
+						if len(v) > 0 {
+							AddValueToParams(Name, v[0], 'b', FromBody, ps)
+						}
+					}
+				}
+			}
+		} else {
+			for Name, v := range req.PostForm {
+				if len(v) > 0 {
+					AddValueToParams(Name, v[0], 'b', FromBody, ps)
+				}
+			}
+		}
+	}
+	return 0
+}
+
+// -------------------------------------------------------------------------------------------------
 func ParseCookiesAsParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
+
+	Ck := req.Cookies()
+	for _, v := range Ck {
+		AddValueToParams(v.Name, v.Value, 'c', FromCookie, ps)
+	}
+	return 0
+}
+
+// -------------------------------------------------------------------------------------------------
+func ParseCookiesAsParamsReg(www http.ResponseWriter, req *http.Request, ps *Params) int {
 
 	Ck := req.Cookies()
 	for _, v := range Ck {
@@ -423,7 +492,29 @@ func ApacheLogingAfter(w *MyResponseWriter, req *http.Request, ps *Params) int {
 }
 
 // -------------------------------------------------------------------------------------------------
-func ParseQueryParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
+func ParseQueryParams(www *MyResponseWriter, req *http.Request, ps *Params) int {
+	// u, err := url.ParseRequestURI(req.RequestURI)
+	if req.URL.RawQuery == "" {
+		return 0
+	}
+	m, err := url.ParseQuery(req.URL.RawQuery)
+	// db("ParseQueryParams","Parsing Raw Query ->%s<-, m=%s\n", req.URL.RawQuery, debug.SVar(m))
+	if err != nil {
+		fmt.Printf("Unable to parse URL query, %s\n", err)
+	}
+	for Name, v := range m {
+		vv := ""
+		if len(v) == 1 {
+			vv = v[0]
+		} else {
+			vv = debug.SVar(v)
+		}
+		AddValueToParams(Name, vv, 'q', FromParams, ps)
+	}
+	return 0
+}
+
+func ParseQueryParamsReg(www http.ResponseWriter, req *http.Request, ps *Params) int {
 	// u, err := url.ParseRequestURI(req.RequestURI)
 	if req.URL.RawQuery == "" {
 		return 0
@@ -459,6 +550,20 @@ func PrefixWith(w *MyResponseWriter, req *http.Request, ps *Params) int {
 
 // -------------------------------------------------------------------------------------------------
 func MethodParam(w *MyResponseWriter, req *http.Request, ps *Params) int {
+	//fmt.Printf("MethodParam\n")
+	//fmt.Printf("%s\n", debug.LF())
+	if ps.HasName("METHOD") {
+		//fmt.Printf("%s\n", debug.LF())
+		x := ps.ByName("METHOD")
+		if b, ok := validMethod[x]; ok && b {
+			//fmt.Printf("%s\n", debug.LF())
+			req.Method = ps.ByName("METHOD")
+		}
+	}
+	return 0
+}
+
+func MethodParamReg(www http.ResponseWriter, req *http.Request, ps *Params) int {
 	//fmt.Printf("MethodParam\n")
 	//fmt.Printf("%s\n", debug.LF())
 	if ps.HasName("METHOD") {
