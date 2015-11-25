@@ -175,6 +175,37 @@ func (ps *Params) GetByName(name string) (rv string, found bool) {
 	return
 }
 
+func (ps *Params) GetByNameAndType(name string, ft FromType) (rv string, found bool) {
+	rv = ""
+	found = false
+	// xyzzy100 Change this to use a map[string]int - build maps on setup.
+	// fmt.Printf("Looking For: %s, ps = %s\n", name, debug.SVarI(ps.Data[0:ps.NParam]))
+	// fmt.Printf("ByName ------------------------\n")
+	if ps.search_ready {
+		// fmt.Printf("Is True ------------------------\n")
+		if i, ok := ps.search[name]; ok {
+			trv := ps.Data[i].Value
+			if ps.Data[i].From == ft {
+				rv = trv
+				found = true
+			}
+		}
+		return
+	}
+
+	for i := 0; i < ps.NParam; i++ {
+		if ps.Data[i].Name == name {
+			trv := ps.Data[i].Value
+			if ps.Data[i].From == ft {
+				rv = trv
+				found = true
+			}
+			return
+		}
+	}
+	return
+}
+
 func (ps *Params) ByNameDflt(name string, dflt string) (rv string) {
 	if ps.HasName(name) {
 		return ps.ByName(name)
@@ -205,6 +236,13 @@ func (ps *Params) SetValue(name string, val string) {
 		ps.Data[x].Value = val
 	}
 }
+
+//func (ps *Params) SetValueType(name string, ty FromType, val string) {
+//	x := ps.PositionOf(name)
+//	if x >= 0 {
+//		ps.Data[x].Value = val
+//	}
+//}
 
 func (ps *Params) PositionOf(name string) (rv int) {
 	rv = -1
