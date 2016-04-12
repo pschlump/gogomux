@@ -9,7 +9,6 @@ package gogomux
 //
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	debug "github.com/pschlump/godebug"
+	"github.com/pschlump/json" //	"encoding/json"
 )
 
 type FromType int
@@ -290,13 +290,20 @@ func AddValueToParams(Name string, Value string, Type uint8, From FromType, ps *
 func ParseBodyAsParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
 
 	ct := req.Header.Get("Content-Type")
+	fmt.Printf("*************************************************************************** content type \n")
+	fmt.Printf("content-type: %s, %s\n", ct, debug.LF())
+	fmt.Printf("*************************************************************************** content type \n")
 	if req.Method == "POST" || req.Method == "PUT" || req.Method == "PATCH" || req.Method == "DELETE" {
+		fmt.Printf("AT %s\n", debug.LF())
 		if req.PostForm == nil {
+			fmt.Printf("AT %s\n", debug.LF())
 			if strings.HasPrefix(ct, "application/json") {
+				fmt.Printf("AT %s\n", debug.LF())
 				body, err2 := ioutil.ReadAll(req.Body)
 				if err2 != nil {
 					fmt.Printf("Error(20008): Malformed JSON body, RequestURI=%s err=%v\n", req.RequestURI, err2)
 				}
+				fmt.Printf("THIS ONE                                           !!!!!!!!!!!!!!! body >%s< AT %s\n", body, debug.LF())
 				var jsonData map[string]interface{}
 				err := json.Unmarshal(body, &jsonData)
 				if err == nil {
@@ -320,8 +327,11 @@ func ParseBodyAsParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
 						}
 						AddValueToParams(Name, Value, 'b', FromBodyJson, ps)
 					}
+				} else {
+					fmt.Printf("Error: in parsing JSON data >%s< Error: %s\n", body, err)
 				}
 			} else {
+				fmt.Printf("AT %s\n", debug.LF())
 				err := req.ParseForm()
 				if err != nil {
 					fmt.Printf("Error(20010): Malformed body, RequestURI=%s err=%v\n", req.RequestURI, err)
@@ -334,6 +344,7 @@ func ParseBodyAsParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
 				}
 			}
 		} else {
+			fmt.Printf("AT %s\n", debug.LF())
 			for Name, v := range req.PostForm {
 				if len(v) > 0 {
 					AddValueToParams(Name, v[0], 'b', FromBody, ps)
@@ -348,15 +359,23 @@ func ParseBodyAsParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
 func ParseBodyAsParamsReg(www http.ResponseWriter, req *http.Request, ps *Params) int {
 
 	ct := req.Header.Get("Content-Type")
+	fmt.Printf("*************************************************************************** content type \n")
+	fmt.Printf("content-type: %s, %s\n", ct, debug.LF())
+	fmt.Printf("*************************************************************************** content type \n")
 	if req.Method == "POST" || req.Method == "PUT" || req.Method == "PATCH" || req.Method == "DELETE" {
+		fmt.Printf("AT %s\n", debug.LF())
 		if req.PostForm == nil {
+			fmt.Printf("AT %s\n", debug.LF())
 			if strings.HasPrefix(ct, "application/json") {
+				fmt.Printf("AT %s\n", debug.LF())
 				body, err2 := ioutil.ReadAll(req.Body)
 				if err2 != nil {
 					fmt.Printf("Error(20008): Malformed JSON body, RequestURI=%s err=%v\n", req.RequestURI, err2)
 				}
 				var jsonData map[string]interface{}
 				err := json.Unmarshal(body, &jsonData)
+				fmt.Printf("AT %s\n", debug.LF())
+				fmt.Printf("THIS ONE                                           !!!!!!!!!!!!!!! body >%s< AT %s\n", body, debug.LF())
 				if err == nil {
 					for Name, v := range jsonData {
 						Value := ""
@@ -378,8 +397,12 @@ func ParseBodyAsParamsReg(www http.ResponseWriter, req *http.Request, ps *Params
 						}
 						AddValueToParams(Name, Value, 'b', FromBodyJson, ps)
 					}
+				} else {
+					fmt.Printf("Error: in parsing JSON data >%s< Error: %s\n", body, err)
 				}
+				fmt.Printf("Params Are: %s AT %s\n", ps.DumpParam(), debug.LF())
 			} else {
+				fmt.Printf("AT %s\n", debug.LF())
 				err := req.ParseForm()
 				if err != nil {
 					fmt.Printf("Error(20010): Malformed body, RequestURI=%s err=%v\n", req.RequestURI, err)
@@ -392,6 +415,7 @@ func ParseBodyAsParamsReg(www http.ResponseWriter, req *http.Request, ps *Params
 				}
 			}
 		} else {
+			fmt.Printf("AT %s\n", debug.LF())
 			for Name, v := range req.PostForm {
 				if len(v) > 0 {
 					AddValueToParams(Name, v[0], 'b', FromBody, ps)
@@ -613,6 +637,14 @@ func MethodParamReg(www http.ResponseWriter, req *http.Request, ps *Params) int 
 		}
 	}
 	return 0
+}
+
+func RenameReservedItems(www http.ResponseWriter, req *http.Request, ps *Params, ri map[string]bool) {
+	for i := 0; i < ps.NParam; i++ {
+		if ri[ps.Data[i].Name] {
+			ps.Data[i].Name = "user_param::" + ps.Data[i].Name
+		}
+	}
 }
 
 /*

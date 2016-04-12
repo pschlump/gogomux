@@ -8,7 +8,6 @@ package gogomux
 
 import (
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,6 +15,8 @@ import (
 	"testing"
 
 	// "./context" // "github.com/gorilla/context"
+
+	"github.com/pschlump/json" //	"encoding/json"
 
 	debug "github.com/pschlump/godebug"
 )
