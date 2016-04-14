@@ -719,6 +719,6 @@ Link: <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=2>; rel
 */
 
 const db4 = false // Parse Body
-const db5 = true  // Dump params to log (stdout) in human format.
+const db5 = false // Dump params to log (stdout) in human format.
 
 /* vim: set noai ts=4 sw=4: */
