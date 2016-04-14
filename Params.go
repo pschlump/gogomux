@@ -23,6 +23,7 @@ import (
 )
 
 type FromType int
+type ParamType uint8
 
 const (
 	FromURL FromType = iota
@@ -44,7 +45,7 @@ type Param struct {
 	Name  string
 	Value string
 	From  FromType
-	Type  uint8
+	Type  ParamType
 }
 
 // Params is a Param-slice, as returned by the router.
@@ -89,8 +90,30 @@ func FromTypeToString(ff FromType) string {
 	case FromAuth:
 		return "FromAuth"
 	default:
-		return "Unknown-FromType"
+		return "Unk-FromType"
 	}
+}
+
+func (ff FromType) String() string {
+	return FromTypeToString(ff)
+}
+
+func (ff ParamType) String() string {
+	switch ff {
+	case 'i':
+		return "-inject-"
+	case 's':
+		return "pt:s"
+	case 'J':
+		return "pt:J"
+	case 'a':
+		return "pt:a"
+	case 'b':
+		return "-body-"
+	case 'c':
+		return "-cookie-"
+	}
+	return fmt.Sprintf("p?:%s", string(rune(ff)))
 }
 
 func (ps *Params) MakeStringMap(mdata map[string]string) {
@@ -123,6 +146,22 @@ func (ps *Params) DumpParamDB() (rv string) {
 	var Data2 []Param
 	Data2 = ps.Data[0:ps.NParam]
 	rv = debug.SVarI(Data2)
+	return
+}
+
+func (ps *Params) DumpParamTable() (rv string) {
+	//	"Name": "LoginAuthToken",
+	//	"Value": "x",
+	//	"From": 2,
+	//	"Type": 99
+
+	rv = "\n"
+	rv += fmt.Sprintf("%-35s %-12s %-10s %s\n", "Name", "From", "Type", "Value")
+	rv += fmt.Sprintf("%-35s %-12s %-10s %s\n", "----------------------------------", "------------", "---------", "-----------------------------------------")
+	for _, vv := range ps.Data[0:ps.NParam] {
+		rv += fmt.Sprintf("%35s %12s %10s %s\n", vv.Name, vv.From, vv.Type, vv.Value)
+	}
+	rv += "\n"
 	return
 }
 
@@ -264,7 +303,7 @@ func (ps *Params) ByPostion(pos int) (name string, val string, outRange bool) {
 }
 
 // -------------------------------------------------------------------------------------------------
-func AddValueToParams(Name string, Value string, Type uint8, From FromType, ps *Params) (k int) {
+func AddValueToParams(Name string, Value string, Type ParamType, From FromType, ps *Params) (k int) {
 	ps.search_ready = false
 	j := ps.PositionOf(Name)
 	k = ps.NParam
@@ -359,23 +398,33 @@ func ParseBodyAsParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
 func ParseBodyAsParamsReg(www http.ResponseWriter, req *http.Request, ps *Params) int {
 
 	ct := req.Header.Get("Content-Type")
-	fmt.Printf("*************************************************************************** content type \n")
-	fmt.Printf("content-type: %s, %s\n", ct, debug.LF())
-	fmt.Printf("*************************************************************************** content type \n")
+	if db4 {
+		fmt.Printf("*************************************************************************** content type \n")
+		fmt.Printf("content-type: %s, %s\n", ct, debug.LF())
+		fmt.Printf("*************************************************************************** content type \n")
+	}
 	if req.Method == "POST" || req.Method == "PUT" || req.Method == "PATCH" || req.Method == "DELETE" {
-		fmt.Printf("AT %s\n", debug.LF())
-		if req.PostForm == nil {
+		if db4 {
 			fmt.Printf("AT %s\n", debug.LF())
-			if strings.HasPrefix(ct, "application/json") {
+		}
+		if req.PostForm == nil {
+			if db4 {
 				fmt.Printf("AT %s\n", debug.LF())
+			}
+			if strings.HasPrefix(ct, "application/json") {
+				if db4 {
+					fmt.Printf("AT %s\n", debug.LF())
+				}
 				body, err2 := ioutil.ReadAll(req.Body)
 				if err2 != nil {
 					fmt.Printf("Error(20008): Malformed JSON body, RequestURI=%s err=%v\n", req.RequestURI, err2)
 				}
 				var jsonData map[string]interface{}
 				err := json.Unmarshal(body, &jsonData)
-				fmt.Printf("AT %s\n", debug.LF())
-				fmt.Printf("THIS ONE                                           !!!!!!!!!!!!!!! body >%s< AT %s\n", body, debug.LF())
+				if db4 {
+					fmt.Printf("AT %s\n", debug.LF())
+					fmt.Printf("THIS ONE                                           !!!!!!!!!!!!!!! body >%s< AT %s\n", body, debug.LF())
+				}
 				if err == nil {
 					for Name, v := range jsonData {
 						Value := ""
@@ -400,9 +449,13 @@ func ParseBodyAsParamsReg(www http.ResponseWriter, req *http.Request, ps *Params
 				} else {
 					fmt.Printf("Error: in parsing JSON data >%s< Error: %s\n", body, err)
 				}
-				fmt.Printf("Params Are: %s AT %s\n", ps.DumpParam(), debug.LF())
+				if db5 {
+					fmt.Printf("Params Are: %s AT %s\n", ps.DumpParamDB(), debug.LF())
+				}
 			} else {
-				fmt.Printf("AT %s\n", debug.LF())
+				if db4 {
+					fmt.Printf("AT %s\n", debug.LF())
+				}
 				err := req.ParseForm()
 				if err != nil {
 					fmt.Printf("Error(20010): Malformed body, RequestURI=%s err=%v\n", req.RequestURI, err)
@@ -415,7 +468,9 @@ func ParseBodyAsParamsReg(www http.ResponseWriter, req *http.Request, ps *Params
 				}
 			}
 		} else {
-			fmt.Printf("AT %s\n", debug.LF())
+			if db4 {
+				fmt.Printf("AT %s\n", debug.LF())
+			}
 			for Name, v := range req.PostForm {
 				if len(v) > 0 {
 					AddValueToParams(Name, v[0], 'b', FromBody, ps)
@@ -662,4 +717,8 @@ req.Header.Add("Link", `W/"wyzzy"`)
 Link: <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=2>; rel="next",
   <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=34>; rel="last"
 */
+
+const db4 = false // Parse Body
+const db5 = true  // Dump params to log (stdout) in human format.
+
 /* vim: set noai ts=4 sw=4: */
