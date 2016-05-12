@@ -1,5 +1,8 @@
 #GoGoMux - A Fash HTTP Request Router
 
+ [![license](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/pschlump/Go-FTL/master/LICENSE)
+
+
 GoGoMux is a high performance HTTP request router
 (also called *multiplexer* or just *mux* for short) for [Go](http://golang.org/).
 

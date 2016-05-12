@@ -112,6 +112,8 @@ func (ff ParamType) String() string {
 		return "-body-"
 	case 'c':
 		return "-cookie-"
+	case 'e':
+		return "-encrypted-"
 	}
 	return fmt.Sprintf("p?:%s", string(rune(ff)))
 }
@@ -156,10 +158,10 @@ func (ps *Params) DumpParamTable() (rv string) {
 	//	"Type": 99
 
 	rv = "\n"
-	rv += fmt.Sprintf("%-35s %-12s %-10s %s\n", "Name", "From", "Type", "Value")
-	rv += fmt.Sprintf("%-35s %-12s %-10s %s\n", "----------------------------------", "------------", "---------", "-----------------------------------------")
+	rv += fmt.Sprintf("%-35s %-12s %-12s %s\n", "Name", "From", "Type", "Value")
+	rv += fmt.Sprintf("%-35s %-12s %-12s %s\n", "----------------------------------", "------------", "---------", "-----------------------------------------")
 	for _, vv := range ps.Data[0:ps.NParam] {
-		rv += fmt.Sprintf("%35s %12s %10s %s\n", vv.Name, vv.From, vv.Type, vv.Value)
+		rv += fmt.Sprintf("%35s %12s %12s %s\n", vv.Name, vv.From, vv.Type, vv.Value)
 	}
 	rv += "\n"
 	return
@@ -329,9 +331,9 @@ func AddValueToParams(Name string, Value string, Type ParamType, From FromType, 
 func ParseBodyAsParams(w *MyResponseWriter, req *http.Request, ps *Params) int {
 
 	ct := req.Header.Get("Content-Type")
-	fmt.Printf("*************************************************************************** content type \n")
-	fmt.Printf("content-type: %s, %s\n", ct, debug.LF())
-	fmt.Printf("*************************************************************************** content type \n")
+	//fmt.Printf("*************************************************************************** content type \n")
+	//fmt.Printf("content-type: %s, %s\n", ct, debug.LF())
+	//fmt.Printf("*************************************************************************** content type \n")
 	if req.Method == "POST" || req.Method == "PUT" || req.Method == "PATCH" || req.Method == "DELETE" {
 		fmt.Printf("AT %s\n", debug.LF())
 		if req.PostForm == nil {

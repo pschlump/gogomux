@@ -1047,6 +1047,7 @@ func Test_1_ServeHTTP(t *testing.T) {
 			}
 			arrived = 0
 			// ---------------------------------------------------------------------------------------------------
+			fmt.Printf("\nStart of %d, req.RequestURI=%s, %s\n", i, req.RequestURI, debug.LF())
 			r.ServeHTTP(w, &req)
 			// ---------------------------------------------------------------------------------------------------
 			// fmt.Printf("route_i = %d, r.route[%d][ %s %s ]\n", g_route_i, g_route_i, debug.SVar(r.routes[g_route_i].DMethods), r.routes[g_route_i].DPath)

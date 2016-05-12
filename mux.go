@@ -1856,6 +1856,46 @@ func (r *MuxRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	return
 }
 
+func (r *MuxRouter) MatchAndServeHTTP(www http.ResponseWriter, req *http.Request) (Found bool) {
+	m := 0
+
+	// xyzzyGoFtl01 - Make this the buffer we use in Go-FTL
+	var rr_www MyResponseWriter  // PJS - Sun Nov 15 13:20:01 MST 2015
+	r_www := &rr_www             // just put on stack
+	r_www.StartTime = time.Now() // 25ns
+	r_www.Status = http.StatusOK // 1ns
+	r_www.ResponseBytes = 0      // 1ns
+	r_www.w = www                // 1ns
+
+	// xyzzyGoFtl01 - Remove in favor of Ps in buffer
+	InitParams(&r.AllParam)
+
+	if !r.HasBeenCompiled { // 2ns
+		r.CompileRoutes()
+	}
+
+	path := req.URL.Path
+	Method := req.Method
+	m = (int(Method[0]) + (int(Method[1]) << 1))
+
+	r.SplitOnSlash3(m, path, true)
+	found, ln, item := r.LookupUrlViaHash2(www, req, &m)
+	Found = found
+	// if dbLookup4 {
+	// fmt.Printf("found=%v, %s\n", found, debug.LF())
+	// }
+	if found {
+		// fmt.Printf("Was Found!  Getting args now\n")
+		r.GetArgs3(path, item.ArgPattern, item.ArgNames, ln)
+		// fmt.Printf("Was Found!  Calling Fx, params=%s\n", r.AllParam.DumpParam())
+		r.AllParam.route_i = item.route_i // xyzzyGoFtl01 - Remove in favor of Ps in buffer
+		// fmt.Printf("Found, parsing paras for route_i=%d\n", r.AllParam.route_i)
+		item.Fx(r_www, req, r.AllParam) // xyzzyGoFtl01 - Convert to buffer for TabServer2
+	}
+
+	return
+}
+
 // ServeFiles serves files from the given file system root.
 // The path must end with "/*filepath", files are then served from the local
 // path /defined/root/dir/*filepath.
@@ -2142,6 +2182,7 @@ func (r *MuxRouter) WidgetMatch(MatchIt []Match, w http.ResponseWriter, req *htt
 			_ = i
 			// b := v.MatchFunc(req, r, v.Data)
 			b := v.MatchFunc(req, r, route_i)
+			fmt.Printf("MatchFunc [%d] == %v, with route_i = %d, req.RequestURI=%s, %s\n", i, b, route_i, req.RequestURI, debug.LF())
 			if !b {
 				return false
 			}
